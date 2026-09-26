@@ -114,13 +114,12 @@ auth:
     secret: N8VBIEU9QPushJTC2QAt
     # Token expiration time in seconds
     expiration: 604800 # 7 days
-    # Where to read the token from. Omitted => `Authorization: Bearer <token>`.
-    # A cookie or query parameter is a single map with a `from:` tag:
-    #
-    # location:
-    #   from: Cookie
-    #   name: auth_token
+    # Where to read the token from: the login page sets this cookie, and it is
+    # the only accepted location — the token never travels in a header.
     #
     # `from:` is one of Bearer, Cookie, Query. Cookie and Query also take a
     # `name:`. A YAML list of these tries each in order and uses the first
     # that yields a token. See https://loco.rs/docs/how-to/jwt-locations
+    location:
+      from: Cookie
+      name: auth_token
