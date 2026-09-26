@@ -1,0 +1,92 @@
+{% extends "layouts/app.html" %}
+
+{% block meta_title %}Logs · Sagan{% endblock %}
+
+{% block nav %}
+{{ super() }}
+<a href="/logs"
+   class="block rounded-md px-3 py-2 text-sm font-medium {% if active == "logs" %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}">Logs</a>
+{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold tracking-tight">Logs</h1>
+<p class="mt-1 text-sm text-slate-600">Application log records from {{ logs.dir }}. Times are UTC.</p>
+
+{% if not logs.enabled %}
+<p class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+  File logging is disabled, so this page may stay empty.
+</p>
+{% endif %}
+
+<form method="get" action="/logs" class="mt-4 flex flex-wrap items-end gap-3">
+  <label class="text-xs font-medium text-slate-600">Level
+    <select name="level" class="mt-1 block rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700">
+      <option value="all"   {% if logs.level_value == "all"   %}selected{% endif %}>All levels</option>
+      <option value="trace" {% if logs.level_value == "trace" %}selected{% endif %}>Trace and above</option>
+      <option value="debug" {% if logs.level_value == "debug" %}selected{% endif %}>Debug and above</option>
+      <option value="info"  {% if logs.level_value == "info"  %}selected{% endif %}>Info and above</option>
+      <option value="warn"  {% if logs.level_value == "warn"  %}selected{% endif %}>Warn and above</option>
+      <option value="error" {% if logs.level_value == "error" %}selected{% endif %}>Error only</option>
+    </select>
+  </label>
+  <label class="text-xs font-medium text-slate-600">From (UTC)
+    <input type="datetime-local" name="from" step="1" value="{{ logs.from_value }}"
+           class="mt-1 block rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
+  </label>
+  <label class="text-xs font-medium text-slate-600">To (UTC)
+    <input type="datetime-local" name="to" step="1" value="{{ logs.to_value }}"
+           class="mt-1 block rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
+  </label>
+  <button type="submit"
+          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Filter</button>
+  <a href="/logs"
+     class="rounded-md px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700">Reset</a>
+</form>
+
+{% if logs.truncated %}
+<p class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+  Older entries are outside the scanned window and are not listed.
+</p>
+{% endif %}
+
+{% if logs.entries | length == 0 %}
+<p class="mt-6 text-sm text-slate-600">
+  No log entries match these filters. Nothing was read from {{ logs.dir }}.
+</p>
+{% else %}
+<div class="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+  <table class="w-full text-xs">
+    <thead>
+      <tr class="text-left font-medium tracking-wide text-slate-500 uppercase">
+        <th class="px-3 py-2">Time (UTC)</th>
+        <th class="px-3 py-2">Level</th>
+        <th class="px-3 py-2">Target</th>
+        <th class="px-3 py-2">Message</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in logs.entries %}
+      <tr class="border-t border-slate-100 align-top">
+        <td class="py-1 pr-3 pl-3 whitespace-nowrap tabular-nums text-slate-600">{{ entry.timestamp }}</td>
+        <td class="py-1 pr-3"><span class="rounded px-1.5 py-0.5 text-[10px] font-semibold {{ entry.level_css }}">{{ entry.level }}</span></td>
+        <td class="py-1 pr-3 font-mono text-slate-500">{{ entry.target }}</td>
+        <td class="py-1 pr-3 whitespace-pre-wrap break-words">{{ entry.message }}{% if entry.extra %} <span class="text-slate-400">{{ entry.extra }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="mt-4 flex items-center gap-3 text-sm">
+  {% if logs.first_url %}
+  <a class="rounded-md border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50" href="{{ logs.first_url }}">First</a>
+  <a class="rounded-md border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50" href="{{ logs.prev_url }}">Previous</a>
+  {% endif %}
+  <span class="text-slate-600">Page {{ logs.page }} of {{ logs.total_pages }} · {{ logs.total_items }} entries</span>
+  {% if logs.next_url %}
+  <a class="rounded-md border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50" href="{{ logs.next_url }}">Next</a>
+  <a class="rounded-md border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50" href="{{ logs.last_url }}">Last</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

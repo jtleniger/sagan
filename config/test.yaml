@@ -10,6 +10,19 @@ logger:
   level: debug
   # Define the logging format. options: compact, pretty or json
   format: compact
+  # Disabled: the test target boots the app once per test in one process and
+  # loco's file appender init runs once (a `OnceLock` worker guard). The /logs
+  # page still reads `dir`, which tests fill with fixtures.
+  file_appender:
+    enable: false
+    non_blocking: false
+    level: info
+    format: json
+    rotation: daily
+    dir: target/test-logs
+    filename_prefix: sagan
+    filename_suffix: log
+    max_log_files: 7
   # By default the logger has filtering only logs that came from your code or logs that came from `loco` framework. to see all third party libraries
   # Uncomment the line below to override to see all third party libraries you can enable this config and override the logger filters.
   # override_filter: trace

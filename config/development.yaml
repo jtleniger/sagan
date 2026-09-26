@@ -10,6 +10,20 @@ logger:
   level: <%= get_env(name="LOG_LEVEL", default="debug") %>
   # Define the logging format. options: compact, pretty or json
   format: compact
+  # Every record is also written to `logs/` as one JSON object per line; the
+  # /logs page parses these. JSON here, human-readable `format:` above for stdout.
+  file_appender:
+    enable: true
+    non_blocking: true
+    # Required by the schema; loco-rs 1.2 reads it but never applies it (the
+    # appender sees exactly what the filter above lets through).
+    level: <%= get_env(name="LOG_LEVEL", default="debug") %>
+    format: json
+    rotation: daily
+    dir: logs
+    filename_prefix: sagan
+    filename_suffix: log
+    max_log_files: 7
   # By default the logger has filtering only logs that came from your code or logs that came from `loco` framework. to see all third party libraries
   # Uncomment the line below to override to see all third party libraries you can enable this config and override the logger filters.
   # override_filter: trace

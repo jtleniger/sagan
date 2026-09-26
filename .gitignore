@@ -6,6 +6,10 @@
 debug/
 target/
 
+# Application log files written by the logger's file appender. Anchored: an
+# unanchored `logs/` would also match `assets/views/logs/`.
+/logs/
+
 # include cargo lock
 !Cargo.lock
 
