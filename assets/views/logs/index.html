@@ -20,11 +20,16 @@
 {% endif %}
 
 {#
-  Each boundary is two inputs. The visible one is what the reader sees and edits, in their
-  own zone once `logs.js` has run, and it keeps its `name` so that without JavaScript the
-  form still filters — as UTC, which is how the backend reads it. The hidden one starts
-  disabled and empty of effect; `logs.js` enables it, fills it with the same instant in
-  UTC, and drops the visible input's `name`, so exactly one `from`/`to` is ever submitted.
+  Each boundary is a group of three controls: the date and the time the reader edits, and
+  the hidden one that is the only part of the boundary actually submitted. The group is what
+  `logs.js` finds; its parts are its id plus `-date`, `-time` and `-utc`.
+
+  The hidden control starts enabled, holding the server's UTC instant, so the range survives
+  a level-only submit with or without the script. The two visible controls carry no name at
+  all — they are the conversion layer, in the reader's own zone, and the script rewrites the
+  hidden instant from them on submit. Two controls rather than one `datetime-local`, because
+  Firefox gives a `datetime-local` no time picker. The price of that is a reader without the
+  script cannot change a date: nothing typed on the visible controls is submitted.
 #}
 <form method="get" action="/logs" data-logs-filter class="mt-4 flex flex-wrap items-end gap-3">
   <label class="text-xs font-medium text-slate-600">Level
@@ -37,18 +42,26 @@
       <option value="error" {% if logs.level_value == "error" %}selected{% endif %}>Error only</option>
     </select>
   </label>
-  <label class="text-xs font-medium text-slate-600">From
-    <input type="datetime-local" id="logs-from" name="from" step="1"
-           value="{{ logs.from_value }}" data-utc="{{ logs.from_value }}"
-           class="mt-1 block rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
-    <input type="hidden" id="logs-from-utc" name="from" value="{{ logs.from_value }}" disabled>
-  </label>
-  <label class="text-xs font-medium text-slate-600">To
-    <input type="datetime-local" id="logs-to" name="to" step="1"
-           value="{{ logs.to_value }}" data-utc="{{ logs.to_value }}"
-           class="mt-1 block rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
-    <input type="hidden" id="logs-to-utc" name="to" value="{{ logs.to_value }}" disabled>
-  </label>
+  <fieldset id="logs-from" data-utc="{{ logs.from.utc }}" class="min-w-0">
+    <legend class="text-xs font-medium text-slate-600">From</legend>
+    <div class="mt-1 flex items-center gap-1">
+      <input type="date" id="logs-from-date" aria-label="From date" value="{{ logs.from.date }}"
+             class="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
+      <input type="time" id="logs-from-time" aria-label="From time" step="1" value="{{ logs.from.time }}"
+             class="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
+      <input type="hidden" id="logs-from-utc" name="from" value="{{ logs.from.utc }}">
+    </div>
+  </fieldset>
+  <fieldset id="logs-to" data-utc="{{ logs.to.utc }}" class="min-w-0">
+    <legend class="text-xs font-medium text-slate-600">To</legend>
+    <div class="mt-1 flex items-center gap-1">
+      <input type="date" id="logs-to-date" aria-label="To date" value="{{ logs.to.date }}"
+             class="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
+      <input type="time" id="logs-to-time" aria-label="To time" step="1" value="{{ logs.to.time }}"
+             class="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
+      <input type="hidden" id="logs-to-utc" name="to" value="{{ logs.to.utc }}">
+    </div>
+  </fieldset>
   <button type="submit"
           class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Filter</button>
   <a href="/logs"

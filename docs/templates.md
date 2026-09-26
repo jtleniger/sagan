@@ -184,10 +184,17 @@ example, and these are the three hooks it uses:
 
 |Markup|Contract|
 |---|---|
-|`<time datetime="…Z" data-local-time>UTC text</time>`|`datetime` carries the instant; the script rewrites the text in the reader's locale and puts the instant in `title`. The UTC text is the fallback for a reader without JavaScript.|
-|`input[data-utc="YYYY-MM-DDTHH:MM:SS"]`|A `datetime-local` filter boundary. `data-utc` is the UTC value the server rendered, which the script shows on the reader's own clock; the input keeps its `name`, so the form still filters without JavaScript — as UTC.|
-|`input[type="hidden"][id="<that input's id>-utc"]`|Starts `disabled` and inert. On submit the script enables it with the typed value converted to UTC and drops the visible input's `name`, so exactly one `from`/`to` reaches the query string.|
+|`<time datetime="…Z" data-local-time>UTC text</time>`|`datetime` carries the instant; the script rewrites the text in the reader's locale and puts the instant in `title`. The UTC text is the fallback for a reader without the script.|
+|A group with an `id` and `data-utc="YYYY-MM-DDTHH:MM:SS"`|The reader-facing half of a filter boundary: a `-date` and a `-time` input, which the script fills from `data-utc` on the reader's own clock, and a `-utc` input, which is the only part of the boundary submitted. All three are found by the group's `id` plus that suffix.|
+|The `-utc` input (`<input type="hidden" name="from">`)|Starts holding the server's UTC instant, so the range survives a submit of the form's other fields with or without the script. On submit the script rewrites it from the two controls — or empties it, which is what clears the filter — so exactly one `from`/`to` reaches the query string.|
+
+Two controls rather than one `datetime-local`, because Firefox gives that input
+no time picker. The cost of the split is that the reader-facing controls carry no
+`name`: a page whose script never loads shows the UTC instant but cannot change
+it. That is the trade — a boundary is the script's to submit, and the backend's
+to read as UTC.
 
 A DTO backing such a page therefore carries both ends of the instant:
 `LogEntryView::timestamp` (UTC text, the fallback) and
-`LogEntryView::timestamp_utc` (RFC 3339, what the script reads).
+`LogEntryView::timestamp_utc` (RFC 3339, what the script reads) — and, for a
+boundary, `LogsBoundaryView`'s `date`/`time`/`utc`.

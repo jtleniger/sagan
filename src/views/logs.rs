@@ -1,4 +1,4 @@
-use chrono::SecondsFormat;
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde::Serialize;
 
 use crate::logs::{LogEntry, LogPage, LogSource, LogsQuery};
@@ -34,11 +34,9 @@ pub struct LogsPageView {
     pub enabled: bool,
     /// The `<select>`'s value: `all` or a level keyword.
     pub level_value: String,
-    /// The `datetime-local` filter boundaries, `YYYY-MM-DDTHH:MM:SS`, UTC, empty when that
-    /// end of the range is unset. `assets/static/js/logs.js` shows them on the reader's own
-    /// clock and converts what the reader typed back to UTC before the form is submitted.
-    pub from_value: String,
-    pub to_value: String,
+    /// The filter's two time boundaries.
+    pub from: LogsBoundaryView,
+    pub to: LogsBoundaryView,
     pub prev_url: Option<String>,
     pub next_url: Option<String>,
     pub first_url: Option<String>,
@@ -70,19 +68,40 @@ impl LogsPageView {
             level_value: query
                 .min_level
                 .map_or_else(|| "all".to_string(), |level| level.param().to_string()),
-            from_value: query
-                .from
-                .map(|from| from.format("%Y-%m-%dT%H:%M:%S").to_string())
-                .unwrap_or_default(),
-            to_value: query
-                .to
-                .map(|to| to.format("%Y-%m-%dT%H:%M:%S").to_string())
-                .unwrap_or_default(),
+            from: query.from.into(),
+            to: query.to.into(),
             prev_url: (current > 1).then(|| page_url(current - 1, query)),
             next_url: (current < total_pages).then(|| page_url(current + 1, query)),
             first_url: (current > 1).then(|| page_url(1, query)),
             last_url: (current < total_pages).then(|| page_url(total_pages, query)),
         }
+    }
+}
+
+/// One end of the `/logs` time range: the two controls the reader edits, and the instant
+/// they stand for.
+///
+/// All three are UTC. `date` and `time` are the controls' initial values — what a reader
+/// without JavaScript sees, and what the script replaces with the same instant on their own
+/// clock. `utc` is the instant the script converts, and the value the boundary's hidden
+/// input starts with: the hidden input is the only part of the boundary that is submitted.
+#[derive(Debug, Default, Serialize)]
+pub struct LogsBoundaryView {
+    /// `2026-09-26`; empty when this end of the range is unset.
+    pub date: String,
+    /// `10:00:00`; empty when this end of the range is unset.
+    pub time: String,
+    /// `2026-09-26T10:00:00`; empty when this end of the range is unset.
+    pub utc: String,
+}
+
+impl From<Option<DateTime<Utc>>> for LogsBoundaryView {
+    fn from(value: Option<DateTime<Utc>>) -> Self {
+        value.map_or_else(Self::default, |value| Self {
+            date: value.format("%Y-%m-%d").to_string(),
+            time: value.format("%H:%M:%S").to_string(),
+            utc: value.format("%Y-%m-%dT%H:%M:%S").to_string(),
+        })
     }
 }
 
@@ -127,7 +146,6 @@ fn page_url(page: u64, query: &LogsQuery) -> String {
 mod tests {
     use super::*;
     use crate::logs::LogLevel;
-    use chrono::{DateTime, Utc};
 
     fn at(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -166,8 +184,14 @@ mod tests {
         let view = LogsPageView::new(&source(), page(120, 2), &query);
 
         assert_eq!(view.level_value, "warn");
-        assert_eq!(view.from_value, "2026-09-26T10:00:00");
-        assert_eq!(view.to_value, "");
+        // The boundary reaches the template ready-split, because the form has one control
+        // per part and a reader without JavaScript must see the instant it stands for.
+        assert_eq!(view.from.date, "2026-09-26");
+        assert_eq!(view.from.time, "10:00:00");
+        assert_eq!(view.from.utc, "2026-09-26T10:00:00");
+        assert_eq!(view.to.date, String::new());
+        assert_eq!(view.to.time, String::new());
+        assert_eq!(view.to.utc, String::new());
         assert_eq!(
             view.prev_url.as_deref(),
             Some("/logs?page=1&level=warn&from=2026-09-26T10:00:00")
@@ -191,8 +215,8 @@ mod tests {
         let view = LogsPageView::new(&source(), page(3, 1), &LogsQuery::default());
 
         assert_eq!(view.level_value, "all");
-        assert_eq!(view.from_value, "");
-        assert_eq!(view.to_value, "");
+        assert_eq!(view.from.utc, "");
+        assert_eq!(view.to.utc, "");
         assert_eq!(view.prev_url, None);
         assert_eq!(view.next_url, None);
         assert_eq!(view.first_url, None);

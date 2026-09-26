@@ -205,8 +205,12 @@ fn renders_logs_page_with_entries_and_pager() {
                     "dir": "logs",
                     "enabled": true,
                     "level_value": "warn",
-                    "from_value": "2026-09-26T10:00:00",
-                    "to_value": "",
+                    "from": {
+                        "date": "2026-09-26",
+                        "time": "10:00:00",
+                        "utc": "2026-09-26T10:00:00"
+                    },
+                    "to": {"date": "", "time": "", "utc": ""},
                     "prev_url": "/logs?page=1&level=warn",
                     "next_url": "/logs?page=3&level=warn",
                     "first_url": "/logs?page=1&level=warn",
@@ -223,16 +227,19 @@ fn renders_logs_page_with_entries_and_pager() {
         "2026-09-26 10:02:00.000",
         // The row's timestamp: the instant for the browser, the UTC text as the fallback.
         r#"<time datetime="2026-09-26T10:02:00.000Z" data-local-time>"#,
-        // The filter boundaries the local-time script converts, and its hidden twins.
-        r#"data-utc="2026-09-26T10:00:00""#,
-        r#"id="logs-from-utc" name="from" value="2026-09-26T10:00:00" disabled"#,
+        // The filter boundary the local-time script converts: the UTC instant on the group,
+        // the split UTC values in the two controls the reader edits, and the hidden input
+        // that is the only part of the boundary submitted.
+        r#"id="logs-from" data-utc="2026-09-26T10:00:00""#,
+        r#"id="logs-from-date" aria-label="From date" value="2026-09-26""#,
+        r#"id="logs-from-time" aria-label="From time" step="1" value="10:00:00""#,
+        r#"id="logs-from-utc" name="from" value="2026-09-26T10:00:00">"#,
         r#"src="/static/js/logs.js""#,
         // The pager keeps the active filters, HTML-escaped in the attribute.
         r#"href="/logs?page=3&amp;level=warn""#,
         r#"href="/logs?page=1&amp;level=warn""#,
         "Page 2 of 3",
         "120 entries",
-        r#"value="2026-09-26T10:00:00""#,
         // The sidebar link, added by this page's `nav` block override.
         r#"href="/logs""#,
     ] {
@@ -271,8 +278,8 @@ fn renders_logs_empty_state() {
                     "dir": "logs",
                     "enabled": false,
                     "level_value": "all",
-                    "from_value": "",
-                    "to_value": "",
+                    "from": {"date": "", "time": "", "utc": ""},
+                    "to": {"date": "", "time": "", "utc": ""},
                     "prev_url": null,
                     "next_url": null,
                     "first_url": null,

@@ -153,19 +153,19 @@ async fn logs_filters_by_time_range() {
             !body.contains("boot ok") && !body.contains("db gone"),
             "expected the entries outside the range to be filtered out, got: {body}"
         );
+        // Each boundary reaches the page as a UTC instant on its group, the same instant
+        // split across the two controls the reader edits, and the hidden input that is the
+        // only part of the boundary submitted.
         assert!(
-            body.contains(r#"value="2026-09-26T10:01:00""#),
-            "expected the from input to echo the submitted value, got: {body}"
-        );
-        // The script reads `data-utc` to show that same instant locally, and writes the
-        // UTC back into the hidden twin on submit.
-        assert!(
-            body.contains(r#"id="logs-from" name="from" step="1""#)
-                && body.contains(r#"data-utc="2026-09-26T10:01:00""#)
+            body.contains(r#"id="logs-from" data-utc="2026-09-26T10:01:00""#)
+                && body
+                    .contains(r#"id="logs-from-date" aria-label="From date" value="2026-09-26""#)
                 && body.contains(
-                    r#"id="logs-from-utc" name="from" value="2026-09-26T10:01:00" disabled"#
-                ),
-            "expected the local-time boundary contract, got: {body}"
+                    r#"id="logs-from-time" aria-label="From time" step="1" value="10:01:00""#
+                )
+                && body.contains(r#"id="logs-from-utc" name="from" value="2026-09-26T10:01:00">"#)
+                && body.contains(r#"id="logs-to-date" aria-label="To date" value="2026-09-26""#),
+            "expected the split UTC boundary the script converts, got: {body}"
         );
     })
     .await;

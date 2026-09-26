@@ -8,10 +8,10 @@
 // Two contracts with `assets/views/logs/index.html`:
 //
 //   * `time[data-local-time]` — `datetime` is the RFC 3339 instant, the text is the same
-//     instant in UTC (the fallback for a reader without JavaScript).
-//   * `input[data-utc]` — a `datetime-local` filter boundary, `data-utc` being the UTC value
-//     the server rendered. Its `id` names its hidden twin (`-utc`), which is disabled until
-//     this file enables it with the UTC translation of what the reader typed.
+//     instant in UTC (what a reader without this file keeps).
+//   * A filter boundary — an element whose `id` is `logs-from` or `logs-to` and whose
+//     `data-utc` is the UTC instant the server rendered, holding `-date` and `-time` inputs
+//     for the reader and a `-utc` input that is the only part of the boundary submitted.
 (function () {
   "use strict";
 
@@ -22,20 +22,12 @@
     return (value < 10 ? "0" : "") + value;
   }
 
-  function toLocalInputValue(date) {
-    return (
-      date.getFullYear() +
-      "-" +
-      pad(date.getMonth() + 1) +
-      "-" +
-      pad(date.getDate()) +
-      "T" +
-      pad(date.getHours()) +
-      ":" +
-      pad(date.getMinutes()) +
-      ":" +
-      pad(date.getSeconds())
-    );
+  function toLocalDateValue(date) {
+    return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
+  }
+
+  function toLocalTimeValue(date) {
+    return pad(date.getHours()) + ":" + pad(date.getMinutes()) + ":" + pad(date.getSeconds());
   }
 
   // A `Date` parses an unzoned date-time string as local time, so the UTC this file reads
@@ -53,32 +45,45 @@
     return !isNaN(date.getTime());
   }
 
+  // The reader's two controls and the hidden one they feed, per boundary. A boundary whose
+  // parts are not all there is left alone rather than half-handled.
   function boundaries(form) {
-    return Array.prototype.slice.call(form.querySelectorAll("input[data-utc]"));
+    var groups = Array.prototype.slice.call(form.querySelectorAll("[data-utc]"));
+    return groups
+      .map(function (group) {
+        return {
+          utc: group.getAttribute("data-utc"),
+          date: document.getElementById(group.id + "-date"),
+          time: document.getElementById(group.id + "-time"),
+          hidden: document.getElementById(group.id + "-utc")
+        };
+      })
+      .filter(function (boundary) {
+        return boundary.date && boundary.time && boundary.hidden;
+      });
   }
 
-  // Show a boundary in the reader's zone instead of the UTC the server sent.
-  function showLocal(input) {
-    var utc = input.getAttribute("data-utc");
-    if (!utc) return;
+  // Show a boundary on the reader's own clock instead of the UTC the server sent.
+  function showLocal(boundary) {
+    if (!boundary.utc) return;
 
-    var date = fromUtc(utc);
-    if (isValid(date)) input.value = toLocalInputValue(date);
+    var instant = fromUtc(boundary.utc);
+    if (!isValid(instant)) return;
+
+    boundary.date.value = toLocalDateValue(instant);
+    boundary.time.value = toLocalTimeValue(instant);
   }
 
-  // Hand the boundary's instant to the query string in UTC, and stop the input the reader
-  // edited from being submitted next to it.
-  function submitUtc(input) {
-    var hidden = document.getElementById(input.id + "-utc");
-    if (!hidden) return;
+  // Hand the boundary's instant to the query string in UTC. A boundary is a date and a time
+  // together; with either one missing there is no instant to name, and the empty value the
+  // hidden input then carries is what clears the filter.
+  function submitUtc(boundary) {
+    var instant =
+      boundary.date.value && boundary.time.value
+        ? new Date(boundary.date.value + "T" + boundary.time.value)
+        : null;
 
-    var date = new Date(input.value);
-    var utc = input.value && isValid(date) ? toUtc(date) : "";
-
-    hidden.value = utc;
-    // An unset boundary is an absent query parameter, not an empty one.
-    hidden.disabled = utc === "";
-    input.removeAttribute("name");
+    boundary.hidden.value = instant && isValid(instant) ? toUtc(instant) : "";
   }
 
   function showLocalTimes() {
@@ -111,9 +116,10 @@
     var form = document.querySelector("form[data-logs-filter]");
     if (!form) return;
 
-    boundaries(form).forEach(showLocal);
+    var found = boundaries(form);
+    found.forEach(showLocal);
     form.addEventListener("submit", function () {
-      boundaries(form).forEach(submitUtc);
+      found.forEach(submitUtc);
     });
   }
 
