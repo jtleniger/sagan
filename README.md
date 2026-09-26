@@ -2,8 +2,23 @@
 
 [Loco](https://loco.rs) is a web and API framework running on Rust.
 
-This is the **SaaS starter** which includes a `User` model and authentication based on JWT.
-It also include configuration sections that help you pick either a frontend or a server-side template set up for your fullstack server.
+This app is **server-rendered**: pages are Tera templates under
+`assets/views/`, styled with Tailwind from a CDN. Authentication is a JWT in an
+HttpOnly cookie, set by the login page.
+
+## Logging in
+
+```sh
+cargo loco start   # migrate happens on boot; migrate by hand with `cargo loco db migrate`
+```
+
+Open <http://localhost:5150/> → redirected to `/login`. The admin row is created
+by the `seed_default_user` migration, so a fresh database is enough to sign in:
+
+|Field|Value|
+|---|---|
+|Email|`admin@example.com`|
+|Password|`admin`|
 
 
 ## Quick Start
@@ -48,9 +63,12 @@ compilation: debug
 listening on http://localhost:5150
 ```
 
-## Full Stack Serving
+## Templates
 
-You can check your [configuration](config/development.yaml) to pick either frontend setup or server-side rendered template, and activate the relevant configuration sections.
+Pages live in `assets/views/` and extend the shell in
+`assets/views/layouts/app.html`. The layout chain, the context each page must
+pass, static files, i18n, and the "add a new page" recipe are all in
+[docs/templates.md](docs/templates.md).
 
 
 ## Getting help

@@ -1,3 +1,2 @@
-mod auth;
-mod page;
-mod prepare_data;
+mod dashboard;
+mod login;

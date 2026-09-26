@@ -127,3 +127,7 @@ auth:
     secret: <%= get_env(name="JWT_SECRET") %>
     # Token expiration time in seconds
     expiration: 604800 # 7 days
+    # The login form's session cookie is the only accepted token location.
+    location:
+      from: Cookie
+      name: auth_token
