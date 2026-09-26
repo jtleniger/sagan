@@ -38,6 +38,8 @@ uuid = { version = "1.6", features = ["v4"] }
 # and a headless app can still emit them for external consumers.
 ts-rs = { version = "12", features = ["chrono-impl", "serde-compat"] }
 include_dir = { version = "0.7" }
+# Host metrics for the /system page: CPU per core, memory, temperature sensors.
+sysinfo = { version = "0.39", default-features = false, features = ["system", "component"] }
 # view engine i18n
 fluent-templates = { version = "0.15", features = ["tera"] }
 unic-langid = { version = "0.9" }

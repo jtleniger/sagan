@@ -1,7 +1,8 @@
 # Server-rendered templates
 
-Everything this app serves is Tera-rendered HTML plus one stylesheet CDN tag. No
-JS framework, no build step. This file is the contract every new page follows.
+Everything this app serves is Tera-rendered HTML plus CDN `<script>` tags. No
+JS framework, no bundler, no build step. This file is the contract every new
+page follows.
 
 ## Where templates live, and how a request finds one
 
@@ -61,9 +62,9 @@ A page's context contract with the shell is two keys:
 { "user": { "pid": "...", "name": "...", "email": "..." }, "active": "dashboard" }
 ```
 
-`user` is `views::user::UserView`; `active` is the nav key (`"dashboard"` today)
-that `layouts/app.html` compares to highlight the current link. Pages that render
-through the shell must pass both.
+`user` is `views::user::UserView`; `active` is the nav key (`"dashboard"`,
+`"system"`) that `layouts/app.html` compares to highlight the current link.
+Pages that render through the shell must pass both.
 
 Tera 2 resolves `{% extends %}` and `{% block %}` when templates are **loaded**,
 so a child whose parent does not exist (or a block it never defines) fails at

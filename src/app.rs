@@ -11,10 +11,10 @@ use loco_rs::{
     Result,
 };
 use migration::Migrator;
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 #[allow(unused_imports)]
-use crate::{controllers, initializers, models::_entities::users};
+use crate::{controllers, initializers, models::_entities::users, monitor::SystemMonitor};
 
 pub struct App;
 #[async_trait]
@@ -41,6 +41,13 @@ impl Hooks for App {
         create_app::<Self, Migrator>(mode, environment, config).await
     }
 
+    /// Builds the `/system` page's monitor once per process: sysinfo's CPU usage is a delta
+    /// between two reads, so every request must share one `System`.
+    async fn after_context(ctx: AppContext) -> Result<AppContext> {
+        ctx.shared_store.insert(Arc::new(SystemMonitor::new()));
+        Ok(ctx)
+    }
+
     async fn initializers(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
         Ok(vec![Box::new(
             initializers::view_engine::ViewEngineInitializer,
@@ -49,6 +56,7 @@ impl Hooks for App {
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
         AppRoutes::with_default_routes() // controller routes below
+            .add_route(controllers::system::routes())
             .add_route(controllers::dashboard::routes())
             .add_route(controllers::auth::routes())
     }

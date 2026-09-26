@@ -22,6 +22,8 @@
         {% block nav %}
         <a href="/"
            class="block rounded-md px-3 py-2 text-sm font-medium {% if active == "dashboard" %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}">Dashboard</a>
+        <a href="/system"
+           class="block rounded-md px-3 py-2 text-sm font-medium {% if active == "system" %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}">System</a>
         {% endblock %}
       </nav>
     </aside>
