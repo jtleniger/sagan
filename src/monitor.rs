@@ -82,6 +82,7 @@ struct Inner {
 impl SystemMonitor {
     /// Loads the static host facts and takes the first, discarded CPU reading; the first
     /// [`Self::sample`] call is the one that yields a real CPU percentage.
+    #[must_use]
     pub fn new() -> Self {
         let sys = System::new_with_specifics(
             RefreshKind::nothing()
@@ -109,7 +110,7 @@ impl SystemMonitor {
         }
     }
 
-    pub fn info(&self) -> &SystemInfo {
+    pub const fn info(&self) -> &SystemInfo {
         &self.info
     }
 

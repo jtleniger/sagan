@@ -120,6 +120,9 @@ fn round1(value: f32) -> f32 {
     (value * 10.0).round() / 10.0
 }
 
+/// Byte counters are far below `2^53`, and the page shows one decimal, so the lossy
+/// `u64`-as-float casts these helpers need cannot be observed.
+#[allow(clippy::cast_precision_loss)]
 fn percent(part: u64, whole: u64) -> f32 {
     if whole == 0 {
         return 0.0;
@@ -128,6 +131,7 @@ fn percent(part: u64, whole: u64) -> f32 {
 }
 
 /// Binary units, one decimal: `5.9 GiB`, `512.0 KiB`, `900 B`.
+#[allow(clippy::cast_precision_loss)]
 fn bytes(value: u64) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = KIB * 1024.0;
@@ -160,7 +164,7 @@ mod tests {
 
     #[test]
     fn percent_does_not_divide_by_zero() {
-        assert_eq!(percent(0, 0), 0.0);
-        assert_eq!(percent(3, 8), 37.5);
+        assert!(percent(0, 0).abs() < f32::EPSILON);
+        assert!((percent(3, 8) - 37.5).abs() < 0.05);
     }
 }
