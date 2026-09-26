@@ -1,0 +1,51 @@
+{# Polls itself: hx-trigger must stay in sync with MAX_POINTS in static/js/system.js
+   (2 s per sample × 150 points = 5 minute window). #}
+<div id="system-live"
+     hx-get="/system/metrics"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     data-sample="{{ sample_json }}"
+     class="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+
+  <section class="rounded-lg border border-slate-200 bg-white p-4">
+    <h2 class="text-sm font-semibold text-slate-900">CPU per core</h2>
+    <p class="mt-1 text-xs text-slate-500">Total {{ sample.cpu_total_label }}</p>
+    <ul class="mt-3 space-y-2">
+      {% for core in sample.cores %}
+      <li class="flex items-center gap-3">
+        <span class="w-16 shrink-0 text-xs text-slate-600">{{ core.name }}</span>
+        <span class="h-2 flex-1 overflow-hidden rounded bg-slate-100">
+          <span class="block h-2 rounded {% if core.usage > 90.0 %}bg-red-600{% elif core.usage > 75.0 %}bg-amber-500{% else %}bg-slate-900{% endif %}"
+                style="width: {{ core.usage }}%"></span>
+        </span>
+        <span class="w-14 shrink-0 text-right text-xs tabular-nums text-slate-600">{{ core.usage_label }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="rounded-lg border border-slate-200 bg-white p-4">
+    <h2 class="text-sm font-semibold text-slate-900">Memory</h2>
+    <p class="mt-3 text-2xl font-semibold tabular-nums">{{ sample.memory.used_label }}<span class="text-base font-normal text-slate-500"> / {{ sample.memory.total_label }}</span></p>
+    <p class="mt-1 text-xs text-slate-500">{{ sample.memory.used_percent_label }} used · {{ sample.memory.available_label }} available</p>
+    {% if sample.memory.swap_total_bytes > 0 %}
+    <p class="mt-3 text-xs text-slate-500">Swap {{ sample.memory.swap_label }}</p>
+    {% endif %}
+  </section>
+
+  <section class="rounded-lg border border-slate-200 bg-white p-4">
+    <h2 class="text-sm font-semibold text-slate-900">Temperature</h2>
+    {% if sample.temps | length > 0 %}
+    <dl class="mt-3 space-y-2">
+      {% for temp in sample.temps %}
+      <div class="flex items-center justify-between gap-3">
+        <dt class="truncate text-xs text-slate-600">{{ temp.label }}</dt>
+        <dd class="shrink-0 text-sm font-medium tabular-nums">{{ temp.celsius_label }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    {% else %}
+    <p class="mt-3 text-xs text-slate-500">No temperature sensors reported by this host.</p>
+    {% endif %}
+  </section>
+</div>
