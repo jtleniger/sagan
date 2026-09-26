@@ -129,16 +129,17 @@ hand-wiring is how "the handler exists but 404s" happens.
    {% endblock %}
    ```
 
-4. Add the sidebar link by overriding `nav` — `{{ super() }}` keeps the existing
-   links — and add the nav key to the page's `active`:
+4. Add the sidebar link to `layouts/app.html`'s `nav` block — that block is what
+   every page renders, so a link added there is reachable from all of them —
+   and add the page's nav key to its `active`:
 
    ```html
-   {% block nav %}
-   {{ super() }}
-   <a href="/reports" class="block rounded-md px-3 py-2 text-sm font-medium
-      {% if active == "reports" %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}">Reports</a>
-   {% endblock %}
+   <a href="/reports"
+      class="block rounded-md px-3 py-2 text-sm font-medium {% if active == "reports" %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}">Reports</a>
    ```
+
+   A `nav` override in a page template (with `{{ super() }}` to keep the
+   existing links) only affects that one page; the shell is where a link goes.
 
 5. `cargo test` — `tests/views/render.rs` renders templates without a server, so
    a Tera mistake (bad key, missing parent, unknown function) fails there in

@@ -2,12 +2,6 @@
 
 {% block meta_title %}Logs · Sagan{% endblock %}
 
-{% block nav %}
-{{ super() }}
-<a href="/logs"
-   class="block rounded-md px-3 py-2 text-sm font-medium {% if active == "logs" %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}">Logs</a>
-{% endblock %}
-
 {% block content %}
 <h1 class="text-2xl font-semibold tracking-tight">Logs</h1>
 <p class="mt-1 text-sm text-slate-600">Application log records from {{ logs.dir }}. Times are UTC.</p>
@@ -38,7 +32,7 @@
            class="mt-1 block rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
   </label>
   <button type="submit"
-          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Filter</button>
+          class="cursor-pointer rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Filter</button>
   <a href="/logs"
      class="rounded-md px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700">Reset</a>
 </form>
@@ -68,7 +62,7 @@
       {% for entry in logs.entries %}
       <tr class="border-t border-slate-100 align-top">
         <td class="py-1 pr-3 pl-3 whitespace-nowrap tabular-nums text-slate-600">{{ entry.timestamp }}</td>
-        <td class="py-1 pr-3"><span class="rounded px-1.5 py-0.5 text-[10px] font-semibold {{ entry.level_css }}">{{ entry.level }}</span></td>
+        <td class="py-1 pr-3"><span class="inline-block rounded px-1.5 py-0.5 align-middle text-[10px] font-semibold {{ entry.level_css }}">{{ entry.level }}</span></td>
         <td class="py-1 pr-3 font-mono text-slate-500">{{ entry.target }}</td>
         <td class="py-1 pr-3 whitespace-pre-wrap break-words">{{ entry.message }}{% if entry.extra %} <span class="text-slate-400">{{ entry.extra }}</span>{% endif %}</td>
       </tr>

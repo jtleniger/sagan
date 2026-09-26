@@ -68,6 +68,16 @@ fn renders_dashboard_inside_the_app_shell() {
         rendered.contains(r#"href="/""#),
         "expected the dashboard nav link from the shell, got: {rendered}"
     );
+    // The shell's nav is what every page renders, so a page added to the sidebar
+    // must be reachable from here, not only from itself.
+    assert!(
+        rendered.contains(r#"href="/logs""#),
+        "expected the logs nav link from the shell, got: {rendered}"
+    );
+    assert!(
+        rendered.contains(r#"href="/system""#),
+        "expected the system nav link from the shell, got: {rendered}"
+    );
     assert!(
         rendered.contains(r#"action="/logout""#),
         "expected the sign-out form from the shell, got: {rendered}"
