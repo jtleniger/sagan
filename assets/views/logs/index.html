@@ -2,9 +2,16 @@
 
 {% block meta_title %}Logs · Sagan{% endblock %}
 
+{% block head %}
+{{ super() }}
+{# Converts the UTC this page renders into the reader's zone, and the reader's input back
+   into UTC; see the file for the two places that contract meets the markup. #}
+<script defer src="/static/js/logs.js"></script>
+{% endblock %}
+
 {% block content %}
 <h1 class="text-2xl font-semibold tracking-tight">Logs</h1>
-<p class="mt-1 text-sm text-slate-600">Application log records from {{ logs.dir }}. Times are UTC.</p>
+<p class="mt-1 text-sm text-slate-600">Application log records from {{ logs.dir }}. Times are shown in your local time zone.</p>
 
 {% if not logs.enabled %}
 <p class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -12,7 +19,14 @@
 </p>
 {% endif %}
 
-<form method="get" action="/logs" class="mt-4 flex flex-wrap items-end gap-3">
+{#
+  Each boundary is two inputs. The visible one is what the reader sees and edits, in their
+  own zone once `logs.js` has run, and it keeps its `name` so that without JavaScript the
+  form still filters — as UTC, which is how the backend reads it. The hidden one starts
+  disabled and empty of effect; `logs.js` enables it, fills it with the same instant in
+  UTC, and drops the visible input's `name`, so exactly one `from`/`to` is ever submitted.
+#}
+<form method="get" action="/logs" data-logs-filter class="mt-4 flex flex-wrap items-end gap-3">
   <label class="text-xs font-medium text-slate-600">Level
     <select name="level" class="mt-1 block rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700">
       <option value="all"   {% if logs.level_value == "all"   %}selected{% endif %}>All levels</option>
@@ -23,16 +37,20 @@
       <option value="error" {% if logs.level_value == "error" %}selected{% endif %}>Error only</option>
     </select>
   </label>
-  <label class="text-xs font-medium text-slate-600">From (UTC)
-    <input type="datetime-local" name="from" step="1" value="{{ logs.from_value }}"
+  <label class="text-xs font-medium text-slate-600">From
+    <input type="datetime-local" id="logs-from" name="from" step="1"
+           value="{{ logs.from_value }}" data-utc="{{ logs.from_value }}"
            class="mt-1 block rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
+    <input type="hidden" id="logs-from-utc" name="from" value="{{ logs.from_value }}" disabled>
   </label>
-  <label class="text-xs font-medium text-slate-600">To (UTC)
-    <input type="datetime-local" name="to" step="1" value="{{ logs.to_value }}"
+  <label class="text-xs font-medium text-slate-600">To
+    <input type="datetime-local" id="logs-to" name="to" step="1"
+           value="{{ logs.to_value }}" data-utc="{{ logs.to_value }}"
            class="mt-1 block rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700">
+    <input type="hidden" id="logs-to-utc" name="to" value="{{ logs.to_value }}" disabled>
   </label>
   <button type="submit"
-          class="cursor-pointer rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Filter</button>
+          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Filter</button>
   <a href="/logs"
      class="rounded-md px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700">Reset</a>
 </form>
@@ -52,7 +70,7 @@
   <table class="w-full text-xs">
     <thead>
       <tr class="text-left font-medium tracking-wide text-slate-500 uppercase">
-        <th class="px-3 py-2">Time (UTC)</th>
+        <th class="px-3 py-2">Time</th>
         <th class="px-3 py-2">Level</th>
         <th class="px-3 py-2">Target</th>
         <th class="px-3 py-2">Message</th>
@@ -61,7 +79,9 @@
     <tbody>
       {% for entry in logs.entries %}
       <tr class="border-t border-slate-100 align-top">
-        <td class="py-1 pr-3 pl-3 whitespace-nowrap tabular-nums text-slate-600">{{ entry.timestamp }}</td>
+        {# `datetime` is the instant; the text is the same instant in UTC, which is what a
+           reader without JavaScript keeps. #}
+        <td class="py-1 pr-3 pl-3 whitespace-nowrap tabular-nums text-slate-600"><time datetime="{{ entry.timestamp_utc }}" data-local-time>{{ entry.timestamp }}</time></td>
         <td class="py-1 pr-3"><span class="inline-block rounded px-1.5 py-0.5 align-middle text-[10px] font-semibold {{ entry.level_css }}">{{ entry.level }}</span></td>
         <td class="py-1 pr-3 font-mono text-slate-500">{{ entry.target }}</td>
         <td class="py-1 pr-3 whitespace-pre-wrap break-words">{{ entry.message }}{% if entry.extra %} <span class="text-slate-400">{{ entry.extra }}</span>{% endif %}</td>

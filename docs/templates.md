@@ -153,3 +153,41 @@ step, no `node_modules`. The production swap is a compiled
 `assets/static/css/app.css` built with the Tailwind CLI, referenced from the
 `head` block instead — out of scope here, and `base.html` is the single place it
 touches.
+
+### The base layer
+
+`base.html` carries one `<style type="text/tailwindcss">` block, outside
+`{% block head %}` so that a page overriding that block without `{{ super() }}`
+cannot drop it. It holds the rules that belong to every element of a kind rather
+than to one page — today, the pointer cursor on controls:
+
+```css
+@layer base {
+  button:not(:disabled), select:not(:disabled), input[type="datetime-local"]:not(:disabled) { … }
+}
+```
+
+A browser's own default for `button` and `select` is the arrow cursor, and
+Tailwind v4's preflight — unlike v3's — deliberately leaves it alone, so every
+button used to need `cursor-pointer` written on it by hand. Extend that block
+rather than repeating a utility; `@layer base` is what keeps a `cursor-*` utility
+able to override it for a single element. CSS that is not Tailwind-compiled goes
+in a plain `<style>` — an unlayered rule outranks every utility class.
+
+## Dates and times
+
+**The server speaks UTC; the browser speaks the reader's zone.** Every timestamp
+the backend stores, filters on, or renders is UTC, and so are the `?from=`/`?to=`
+values it parses. Showing them locally, and converting back before the form is
+submitted, is the browser's job; `assets/static/js/logs.js` is the working
+example, and these are the three hooks it uses:
+
+|Markup|Contract|
+|---|---|
+|`<time datetime="…Z" data-local-time>UTC text</time>`|`datetime` carries the instant; the script rewrites the text in the reader's locale and puts the instant in `title`. The UTC text is the fallback for a reader without JavaScript.|
+|`input[data-utc="YYYY-MM-DDTHH:MM:SS"]`|A `datetime-local` filter boundary. `data-utc` is the UTC value the server rendered, which the script shows on the reader's own clock; the input keeps its `name`, so the form still filters without JavaScript — as UTC.|
+|`input[type="hidden"][id="<that input's id>-utc"]`|Starts `disabled` and inert. On submit the script enables it with the typed value converted to UTC and drops the visible input's `name`, so exactly one `from`/`to` reaches the query string.|
+
+A DTO backing such a page therefore carries both ends of the instant:
+`LogEntryView::timestamp` (UTC text, the fallback) and
+`LogEntryView::timestamp_utc` (RFC 3339, what the script reads).

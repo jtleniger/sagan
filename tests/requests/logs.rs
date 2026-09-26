@@ -92,6 +92,9 @@ async fn logs_renders_entries_and_filters_by_level() {
             r#"href="/logs""#,
             "Page 1 of 1",
             "2026-09-26 10:02:00.000",
+            // What the local-time script reads, and the script itself.
+            r#"<time datetime="2026-09-26T10:02:00.000Z" data-local-time>"#,
+            r#"src="/static/js/logs.js""#,
         ] {
             assert!(
                 body.contains(expected),
@@ -153,6 +156,16 @@ async fn logs_filters_by_time_range() {
         assert!(
             body.contains(r#"value="2026-09-26T10:01:00""#),
             "expected the from input to echo the submitted value, got: {body}"
+        );
+        // The script reads `data-utc` to show that same instant locally, and writes the
+        // UTC back into the hidden twin on submit.
+        assert!(
+            body.contains(r#"id="logs-from" name="from" step="1""#)
+                && body.contains(r#"data-utc="2026-09-26T10:01:00""#)
+                && body.contains(
+                    r#"id="logs-from-utc" name="from" value="2026-09-26T10:01:00" disabled"#
+                ),
+            "expected the local-time boundary contract, got: {body}"
         );
     })
     .await;

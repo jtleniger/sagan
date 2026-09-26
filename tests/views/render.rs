@@ -191,6 +191,7 @@ fn renders_logs_page_with_entries_and_pager() {
                 "logs": {
                     "entries": [{
                         "timestamp": "2026-09-26 10:02:00.000",
+                        "timestamp_utc": "2026-09-26T10:02:00.000Z",
                         "level": "WARN",
                         "level_css": "bg-amber-100 text-amber-800",
                         "target": "sagan::test",
@@ -220,6 +221,12 @@ fn renders_logs_page_with_entries_and_pager() {
         "disk almost full",
         "&quot;k&quot;:&quot;v&quot;",
         "2026-09-26 10:02:00.000",
+        // The row's timestamp: the instant for the browser, the UTC text as the fallback.
+        r#"<time datetime="2026-09-26T10:02:00.000Z" data-local-time>"#,
+        // The filter boundaries the local-time script converts, and its hidden twins.
+        r#"data-utc="2026-09-26T10:00:00""#,
+        r#"id="logs-from-utc" name="from" value="2026-09-26T10:00:00" disabled"#,
+        r#"src="/static/js/logs.js""#,
         // The pager keeps the active filters, HTML-escaped in the attribute.
         r#"href="/logs?page=3&amp;level=warn""#,
         r#"href="/logs?page=1&amp;level=warn""#,

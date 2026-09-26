@@ -1,3 +1,4 @@
+use chrono::SecondsFormat;
 use serde::Serialize;
 
 use crate::logs::{LogEntry, LogPage, LogSource, LogsQuery};
@@ -5,8 +6,11 @@ use crate::logs::{LogEntry, LogPage, LogSource, LogsQuery};
 /// One row of the `/logs` table.
 #[derive(Debug, Serialize)]
 pub struct LogEntryView {
-    /// `2026-09-26 10:00:00.123`, UTC.
+    /// `2026-09-26 10:00:00.123`, UTC — the text a reader without JavaScript keeps.
     pub timestamp: String,
+    /// The same instant as `2026-09-26T10:00:00.123Z`, for the `<time datetime>` that
+    /// `static/js/logs.js` renders in the reader's own zone.
+    pub timestamp_utc: String,
     pub level: String,
     pub level_css: String,
     pub target: String,
@@ -30,7 +34,9 @@ pub struct LogsPageView {
     pub enabled: bool,
     /// The `<select>`'s value: `all` or a level keyword.
     pub level_value: String,
-    /// The `datetime-local` inputs' values; empty when that end of the range is unset.
+    /// The `datetime-local` filter boundaries, `YYYY-MM-DDTHH:MM:SS`, UTC, empty when that
+    /// end of the range is unset. `assets/static/js/logs.js` shows them on the reader's own
+    /// clock and converts what the reader typed back to UTC before the form is submitted.
     pub from_value: String,
     pub to_value: String,
     pub prev_url: Option<String>,
@@ -84,6 +90,7 @@ impl From<&LogEntry> for LogEntryView {
     fn from(entry: &LogEntry) -> Self {
         Self {
             timestamp: entry.timestamp.format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
+            timestamp_utc: entry.timestamp.to_rfc3339_opts(SecondsFormat::Millis, true),
             level: entry.level.label().to_string(),
             level_css: entry.level.css().to_string(),
             target: entry.target.clone(),
@@ -204,6 +211,7 @@ mod tests {
         let view = LogEntryView::from(&entry);
 
         assert_eq!(view.timestamp, "2026-09-26 10:00:00.123");
+        assert_eq!(view.timestamp_utc, "2026-09-26T10:00:00.123Z");
         assert_eq!(view.level, "WARN");
         assert_eq!(view.level_css, "bg-amber-100 text-amber-800");
         assert_eq!(view.target, "sagan::test");

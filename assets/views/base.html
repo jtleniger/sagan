@@ -4,6 +4,29 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block meta_title %}Sagan{% endblock %}</title>
+    {#
+      Custom CSS for the whole app, compiled by the Tailwind browser build in `head`.
+      It sits outside `{% block head %}` on purpose: a page that overrides `head`
+      without `{{ super() }}` still gets the app's base styles.
+    #}
+    <style type="text/tailwindcss">
+      @layer base {
+        /* A browser's own default for `button` and `select` is the arrow cursor, and
+           Tailwind v4's preflight — unlike v3's — leaves it alone. Every clickable
+           control opts back in here, once, rather than per element. `@layer base` keeps
+           a `cursor-*` utility able to override it. */
+        button:not(:disabled),
+        [role="button"]:not(:disabled),
+        select:not(:disabled),
+        input[type="date"]:not(:disabled),
+        input[type="datetime-local"]:not(:disabled),
+        input[type="month"]:not(:disabled),
+        input[type="time"]:not(:disabled),
+        input[type="week"]:not(:disabled) {
+          cursor: pointer;
+        }
+      }
+    </style>
     {% block head %}
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     {% endblock %}
