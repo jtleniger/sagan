@@ -110,7 +110,7 @@ fn renders_dashboard_inside_the_app_shell() {
 
     for expected in [
         // Live: the placeholder capture and its timestamp, converted by local-time.js.
-        r#"src="/static/img/live-placeholder.svg""#,
+        r#"src="/static/img/no-capture-available.svg""#,
         r#"<time datetime="2026-09-27T12:00:00Z" data-local-time>"#,
         "2026-09-27 12:00:00 UTC",
         r#"src="/static/js/local-time.js""#,

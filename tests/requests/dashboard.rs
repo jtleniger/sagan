@@ -64,7 +64,7 @@ async fn dashboard_renders_the_signed_in_user() {
         );
         for expected in [
             // Live: the placeholder capture and its timestamp.
-            r#"src="/static/img/live-placeholder.svg""#,
+            r#"src="/static/img/no-capture-available.svg""#,
             r#"<time datetime="2026-09-27T12:00:00Z" data-local-time>"#,
             // Status: name and badge text for the tiles the controller supplies.
             "14 captures today",
