@@ -1,9 +1,10 @@
 //! The `/logs` page's model: reads the application's own log records straight from the
-//! files Loco's file appender writes (`logger.file_appender` in `config/*.yaml`), newest
-//! first, filterable by minimum level and by a UTC time range.
+//! files Loco's file appender writes.
 //!
-//! There is no database table and no ingestion step behind this page — the appender is the
-//! writer, these files are the store, and `src/controllers/logs.rs` is the only caller. The
+//! Records are listed newest first, filterable by minimum level and by a UTC time range.
+//! There is no database table and no ingestion step behind this page — the appender
+//! (`logger.file_appender` in `config/*.yaml`) is the writer, these files are the store, and
+//! `src/controllers/logs.rs` is the only caller. The
 //! reader therefore has to be forgiving: a request must never fail because a log directory
 //! is missing, a file rotated mid-read, or a line was flushed half-way. Every one of those
 //! degrades to "this record is not listed", never to an error response.
@@ -257,8 +258,9 @@ pub fn read_page(source: &LogSource, query: &LogsQuery) -> LogPage {
     let total_items = entries.len() as u64;
     let total_pages = total_items.div_ceil(PAGE_SIZE).max(1);
     let page = query.page.clamp(1, total_pages);
-    let mut page_entries = entries.split_off(((page - 1) * PAGE_SIZE) as usize);
-    page_entries.truncate(PAGE_SIZE as usize);
+    let page_offset = usize::try_from((page - 1) * PAGE_SIZE).unwrap_or(usize::MAX);
+    let mut page_entries = entries.split_off(page_offset.min(entries.len()));
+    page_entries.truncate(usize::try_from(PAGE_SIZE).unwrap_or(usize::MAX));
 
     LogPage {
         entries: page_entries,
