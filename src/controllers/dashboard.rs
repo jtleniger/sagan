@@ -1,4 +1,7 @@
-use crate::{controllers::current_user, views::dashboard::DashboardView};
+use crate::{
+    controllers::{current_user, monitor},
+    views::dashboard::DashboardView,
+};
 use loco_rs::prelude::*;
 
 /// `GET /` — the signed-in home page.
@@ -16,13 +19,15 @@ async fn index(
         return format::redirect("/login");
     };
 
+    let monitor = monitor(&ctx)?;
+
     format::render().view(
         &v,
         "dashboard/index.html",
         data!({
             "user": user,
             "active": "dashboard",
-            "dashboard": DashboardView::placeholder(),
+            "dashboard": DashboardView::from_sample(&monitor.sample()),
         }),
     )
 }

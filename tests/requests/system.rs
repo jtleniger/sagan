@@ -87,6 +87,27 @@ async fn system_renders_the_metrics_page() {
     .await;
 }
 
+/// The `data-sample="…"` attribute value, HTML-unescaped the way a browser decodes it, parsed
+/// back into the JSON the charts and the Disk card see.
+fn data_sample(body: &str) -> serde_json::Value {
+    let marker = r#"data-sample=""#;
+    let start = body
+        .find(marker)
+        .expect("the panel should carry the chart payload")
+        + marker.len();
+    let end = start
+        + body[start..]
+            .find('"')
+            .expect("the payload attribute should be closed");
+
+    let unescaped = body[start..end]
+        .replace("&quot;", "\"")
+        .replace("&#34;", "\"")
+        .replace("&amp;", "&");
+
+    serde_json::from_str(&unescaped).expect("the payload should be valid json")
+}
+
 #[tokio::test]
 #[serial]
 async fn metrics_returns_a_pollable_fragment() {
@@ -118,6 +139,24 @@ async fn metrics_returns_a_pollable_fragment() {
         assert!(
             body.contains(r#"hx-trigger="every 2s""#),
             "expected the next poll's trigger, got: {body}"
+        );
+
+        // The panel's heading is not the reading: the disk must be in the payload the page
+        // carries, measured from this host.
+        let payload = data_sample(&body);
+        let total = payload["disk"]["total_bytes"]
+            .as_u64()
+            .expect("the sample should carry the disk it runs on");
+        assert!(
+            total > 0,
+            "the disk reading should be a real one: {payload}"
+        );
+        assert!(
+            payload["disk"]["available_bytes"]
+                .as_u64()
+                .expect("free space should be a number")
+                <= total,
+            "free space cannot exceed the volume's size: {payload}"
         );
     })
     .await;

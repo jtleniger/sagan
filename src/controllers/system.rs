@@ -1,19 +1,9 @@
-use std::sync::Arc;
-
 use crate::{
-    controllers::current_user,
-    monitor::SystemMonitor,
+    controllers::{current_user, monitor},
     views::system::{SystemInfoView, SystemSampleView},
 };
 use axum::http::StatusCode;
 use loco_rs::prelude::*;
-
-/// The process-wide monitor, built at boot in `Hooks::after_context`.
-fn monitor(ctx: &AppContext) -> Result<Arc<SystemMonitor>> {
-    ctx.shared_store
-        .get::<Arc<SystemMonitor>>()
-        .ok_or(Error::InternalServerError)
-}
 
 /// `GET /system` — live host metrics.
 #[debug_handler]

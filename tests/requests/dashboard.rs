@@ -68,7 +68,9 @@ async fn dashboard_renders_the_signed_in_user() {
             r#"<time datetime="2026-09-27T12:00:00Z" data-local-time>"#,
             // Status: name and badge text for the tiles the controller supplies.
             "14 captures today",
-            "5 GB free",
+            // Disk: the live reading from the shared monitor. The volume the test runner sits
+            // on is not fixed, so only the shape of the line is asserted here.
+            "free of ",
             "Last backed up captures at 2026-09-26 03:00:00 UTC",
             "Last reclaimed space at 2026-09-27 04:30:00 UTC; 1.2 GB freed",
         ] {

@@ -7,11 +7,15 @@
 //! instance is refreshed by every sample instead.
 
 use std::{
+    path::{Path, PathBuf},
     sync::Mutex,
     time::{Duration, Instant},
 };
 
-use sysinfo::{Components, CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+use sysinfo::{
+    Components, CpuRefreshKind, Disk, DiskRefreshKind, Disks, MemoryRefreshKind, RefreshKind,
+    System,
+};
 
 /// A cached sample is served for this long before the OS is read again.
 ///
@@ -48,6 +52,37 @@ pub struct MemSample {
     pub swap_used_bytes: u64,
 }
 
+/// The volume holding the running binary.
+#[derive(Debug, Clone)]
+pub struct DiskSample {
+    /// The mount point the reading was taken from, e.g. `/`.
+    pub mount_point: String,
+    /// The filesystem type, e.g. `ext4`.
+    pub file_system: String,
+    pub total_bytes: u64,
+    /// `total - available`: what the page shows as used. Folding the filesystem's
+    /// root-reserved blocks in here is the same trade `MemSample::used_bytes` makes; the page
+    /// only ever shows used and available as a pair, so it stays consistent with itself.
+    pub used_bytes: u64,
+    /// `statvfs`'s `f_bavail` — what `df` calls "Avail", the room an unprivileged process can
+    /// actually use, which is less than `total - used`.
+    pub available_bytes: u64,
+}
+
+impl From<&Disk> for DiskSample {
+    fn from(disk: &Disk) -> Self {
+        let total = disk.total_space();
+        let available = disk.available_space();
+        Self {
+            mount_point: disk.mount_point().to_string_lossy().into_owned(),
+            file_system: disk.file_system().to_string_lossy().into_owned(),
+            total_bytes: total,
+            used_bytes: total.saturating_sub(available),
+            available_bytes: available,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TempSample {
     pub label: String,
@@ -63,6 +98,9 @@ pub struct SystemSample {
     pub cpu_total: f32,
     pub cores: Vec<CoreSample>,
     pub memory: MemSample,
+    /// The volume the running binary sits on; [`target_disk`] picks it. `None` only on a host
+    /// that reports no disks at all.
+    pub disk: Option<DiskSample>,
     /// Empty when the host reports no hwmon/thermal sensor at all.
     pub temps: Vec<TempSample>,
 }
@@ -70,12 +108,15 @@ pub struct SystemSample {
 /// Reads host metrics from one long-lived [`System`]/[`Components`] pair.
 pub struct SystemMonitor {
     info: SystemInfo,
+    /// `current_exe()`, canonicalized once at boot.
+    exe: Option<PathBuf>,
     inner: Mutex<Inner>,
 }
 
 struct Inner {
     sys: System,
     components: Components,
+    disks: Disks,
     last: Option<(Instant, SystemSample)>,
 }
 
@@ -90,6 +131,11 @@ impl SystemMonitor {
                 .with_memory(MemoryRefreshKind::nothing().with_ram().with_swap()),
         );
         let components = Components::new_with_refreshed_list();
+        let disks =
+            Disks::new_with_refreshed_list_specifics(DiskRefreshKind::nothing().with_storage());
+        let exe = std::env::current_exe()
+            .ok()
+            .map(|exe| std::fs::canonicalize(&exe).unwrap_or(exe));
         let arch = System::cpu_arch();
 
         Self {
@@ -102,9 +148,11 @@ impl SystemMonitor {
                     arch
                 },
             },
+            exe,
             inner: Mutex::new(Inner {
                 sys,
                 components,
+                disks,
                 last: None,
             }),
         }
@@ -128,6 +176,12 @@ impl SystemMonitor {
             .refresh_cpu_specifics(CpuRefreshKind::nothing().with_cpu_usage());
         inner.sys.refresh_memory();
         inner.components.refresh(true);
+        // Storage only — nothing on the page reads the disk kind or the I/O counters. `false`
+        // leaves the entry list alone: the mounts `new` found stay in it, so `target_disk`
+        // resolves against a stable list rather than one that shifts under a running process.
+        inner
+            .disks
+            .refresh_specifics(false, DiskRefreshKind::nothing().with_storage());
 
         let total = inner.sys.total_memory();
         let available = inner.sys.available_memory();
@@ -153,6 +207,7 @@ impl SystemMonitor {
                 swap_total_bytes: inner.sys.total_swap(),
                 swap_used_bytes: inner.sys.used_swap(),
             },
+            disk: target_disk(&inner.disks, self.exe.as_deref()).map(DiskSample::from),
             temps: inner
                 .components
                 .iter()
@@ -184,6 +239,31 @@ impl Default for SystemMonitor {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// The longest mount point that contains `path`: `/home/user/media` rather than `/` for
+/// `/home/user/media/app/target/debug/app`.
+///
+/// `Path::starts_with` compares whole components, so the mount `/home/user` does not swallow
+/// `/home/user2`.
+fn deepest_covering<'a>(mounts: impl Iterator<Item = &'a Path>, path: &Path) -> Option<&'a Path> {
+    mounts
+        .filter(|mount| path.starts_with(mount))
+        .max_by_key(|mount| mount.components().count())
+}
+
+/// The disk this page reports: the volume the running binary sits on, else the root
+/// filesystem, else the largest volume. `None` only when the host reports no disks at all.
+fn target_disk<'a>(disks: &'a Disks, exe: Option<&Path>) -> Option<&'a Disk> {
+    exe.and_then(|exe| deepest_covering(disks.list().iter().map(Disk::mount_point), exe))
+        .and_then(|mount| disks.list().iter().find(|disk| disk.mount_point() == mount))
+        .or_else(|| {
+            disks
+                .list()
+                .iter()
+                .find(|disk| disk.mount_point() == Path::new("/"))
+        })
+        .or_else(|| disks.list().iter().max_by_key(|disk| disk.total_space()))
 }
 
 /// The sensor text to show: sysinfo's hwmon label when there is one, else the sensor id
@@ -254,6 +334,56 @@ mod tests {
                 core.usage
             );
         }
+
+        let disk = sample
+            .disk
+            .as_ref()
+            .expect("the host should report the volume it runs from");
+        assert!(disk.total_bytes > 0, "the disk list was not refreshed");
+        assert_eq!(
+            disk.used_bytes + disk.available_bytes,
+            disk.total_bytes,
+            "used and available must add up to the volume's size"
+        );
+        assert!(!disk.mount_point.is_empty());
+        assert!(!disk.file_system.is_empty());
+    }
+
+    #[test]
+    fn deepest_covering_picks_the_most_specific_mount() {
+        let mounts = [
+            Path::new("/"),
+            Path::new("/home"),
+            Path::new("/home/user/media"),
+        ];
+
+        assert_eq!(
+            deepest_covering(
+                mounts.iter().copied(),
+                Path::new("/home/user/media/app/target/app")
+            ),
+            Some(Path::new("/home/user/media"))
+        );
+    }
+
+    #[test]
+    fn deepest_covering_falls_back_to_the_root_mount() {
+        let mounts = [Path::new("/"), Path::new("/home")];
+
+        assert_eq!(
+            deepest_covering(mounts.iter().copied(), Path::new("/etc/systemd/system")),
+            Some(Path::new("/"))
+        );
+    }
+
+    #[test]
+    fn deepest_covering_compares_whole_path_components() {
+        let mounts = [Path::new("/home/user")];
+
+        assert_eq!(
+            deepest_covering(mounts.iter().copied(), Path::new("/home/user2/app")),
+            None
+        );
     }
 
     #[test]

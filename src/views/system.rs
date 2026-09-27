@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::monitor::{SystemInfo, SystemSample, TempSample};
+use crate::monitor::{DiskSample, SystemInfo, SystemSample, TempSample};
 
 /// `/system`'s host tiles.
 #[derive(Debug, Serialize)]
@@ -38,6 +38,41 @@ pub struct MemView {
 }
 
 #[derive(Debug, Serialize)]
+pub struct DiskView {
+    /// The mount point the reading came from, e.g. `/`.
+    pub mount_point: String,
+    /// The filesystem type, e.g. `ext4`.
+    pub file_system: String,
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub available_bytes: u64,
+    /// 0.0..=100.0, used by the `Memory` card's sibling line and the dashboard tile's rule.
+    pub used_percent: f32,
+    pub used_percent_label: String,
+    pub used_label: String,
+    pub total_label: String,
+    pub available_label: String,
+}
+
+impl From<&DiskSample> for DiskView {
+    fn from(disk: &DiskSample) -> Self {
+        let used_percent = percent(disk.used_bytes, disk.total_bytes);
+        Self {
+            mount_point: disk.mount_point.clone(),
+            file_system: disk.file_system.clone(),
+            total_bytes: disk.total_bytes,
+            used_bytes: disk.used_bytes,
+            available_bytes: disk.available_bytes,
+            used_percent,
+            used_percent_label: format!("{used_percent:.1}%"),
+            used_label: bytes(disk.used_bytes),
+            total_label: bytes(disk.total_bytes),
+            available_label: bytes(disk.available_bytes),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 pub struct TempView {
     pub label: String,
     pub celsius: f32,
@@ -53,6 +88,8 @@ pub struct SystemSampleView {
     pub cpu_total_label: String,
     pub cores: Vec<CoreView>,
     pub memory: MemView,
+    /// `None` on a host that reports no disks; the template says so instead of showing zero.
+    pub disk: Option<DiskView>,
     pub temps: Vec<TempView>,
 }
 
@@ -100,6 +137,7 @@ impl From<&SystemSample> for SystemSampleView {
                     bytes(sample.memory.swap_total_bytes)
                 ),
             },
+            disk: sample.disk.as_ref().map(DiskView::from),
             temps: sample.temps.iter().map(TempView::from).collect(),
         }
     }
@@ -123,7 +161,7 @@ fn round1(value: f32) -> f32 {
 /// Byte counters are far below `2^53`, and the page shows one decimal, so the lossy
 /// `u64`-as-float casts these helpers need cannot be observed.
 #[allow(clippy::cast_precision_loss)]
-fn percent(part: u64, whole: u64) -> f32 {
+pub(crate) fn percent(part: u64, whole: u64) -> f32 {
     if whole == 0 {
         return 0.0;
     }
@@ -132,7 +170,7 @@ fn percent(part: u64, whole: u64) -> f32 {
 
 /// Binary units, one decimal: `5.9 GiB`, `512.0 KiB`, `900 B`.
 #[allow(clippy::cast_precision_loss)]
-fn bytes(value: u64) -> String {
+pub(crate) fn bytes(value: u64) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = KIB * 1024.0;
     const GIB: f64 = MIB * 1024.0;
