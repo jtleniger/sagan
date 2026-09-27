@@ -179,8 +179,9 @@ in a plain `<style>` — an unlayered rule outranks every utility class.
 **The server speaks UTC; the browser speaks the reader's zone.** Every timestamp
 the backend stores, filters on, or renders is UTC, and so are the `?from=`/`?to=`
 values it parses. Showing them locally, and converting back before the form is
-submitted, is the browser's job; `assets/static/js/logs.js` is the working
-example, and these are the three hooks it uses:
+submitted, is the browser's job; `assets/static/js/local-time.js` renders the
+server's instants in the reader's zone, `assets/static/js/logs.js` converts a form
+boundary back, and these are the three hooks:
 
 |Markup|Contract|
 |---|---|

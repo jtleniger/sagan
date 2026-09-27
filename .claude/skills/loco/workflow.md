@@ -174,9 +174,9 @@ Run `cargo loco routes` after adding any endpoint. It is the difference between
 ## Before you call it done
 
 ```sh
-cargo fmt --all
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W rust-2018-idioms
+cargo test --all-features --all
 ```
 
 All three. `clippy -D warnings` is not optional style — a Loco app is expected

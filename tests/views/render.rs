@@ -59,7 +59,28 @@ fn renders_dashboard_inside_the_app_shell() {
             "dashboard/index.html",
             data!({
                 "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
-                "active": "dashboard"
+                "active": "dashboard",
+                // The same object `DashboardView` serializes; every key the template reads.
+                "dashboard": {
+                    "live": {
+                        "captured_at_utc": "2026-09-27T12:00:00Z",
+                        "captured_at": "2026-09-27 12:00:00 UTC"
+                    },
+                    "status": [
+                        {
+                            "name": "Captures",
+                            "status": "Good",
+                            "status_css": "bg-emerald-100 text-emerald-800",
+                            "text": "14 captures today"
+                        },
+                        {
+                            "name": "Disk",
+                            "status": "OK",
+                            "status_css": "bg-amber-100 text-amber-800",
+                            "text": "5 GB free"
+                        }
+                    ]
+                }
             }),
         )
         .expect("dashboard view should render");
@@ -86,6 +107,26 @@ fn renders_dashboard_inside_the_app_shell() {
         rendered.contains("t@example.com"),
         "expected the user's email, got: {rendered}"
     );
+
+    for expected in [
+        // Live: the placeholder capture and its timestamp, converted by local-time.js.
+        r#"src="/static/img/no-capture-available.svg""#,
+        r#"<time datetime="2026-09-27T12:00:00Z" data-local-time>"#,
+        "2026-09-27 12:00:00 UTC",
+        r#"src="/static/js/local-time.js""#,
+        // Status: the name, the text and the badge colour of a tile.
+        "Captures",
+        "14 captures today",
+        "bg-emerald-100 text-emerald-800",
+        "Disk",
+        "5 GB free",
+        "bg-amber-100 text-amber-800",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "expected {expected:?} in the rendered page, got: {rendered}"
+        );
+    }
 }
 
 /// The `data-sample="…"` attribute value, HTML-unescaped the way a browser decodes it,

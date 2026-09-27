@@ -4,8 +4,9 @@
 
 {% block head %}
 {{ super() }}
-{# Converts the UTC this page renders into the reader's zone, and the reader's input back
-   into UTC; see the file for the two places that contract meets the markup. #}
+{# The shared UTC → reader's-zone rendering for every timestamp on the page, and this
+   page's own conversion of the filter boundary back into UTC on submit. #}
+<script defer src="/static/js/local-time.js"></script>
 <script defer src="/static/js/logs.js"></script>
 {% endblock %}
 

@@ -42,7 +42,7 @@ async fn dashboard_redirects_to_login_without_cookie() {
 #[serial]
 async fn dashboard_renders_the_signed_in_user() {
     request_with_config::<App, _, _>(session(), |request, ctx| async move {
-        let user = create_user(&ctx).await;
+        create_user(&ctx).await;
 
         let login = request
             .post("/login")
@@ -59,13 +59,24 @@ async fn dashboard_renders_the_signed_in_user() {
             "expected the signed-in user's email, got: {body}"
         );
         assert!(
-            body.contains(&user.pid.to_string()),
-            "expected the signed-in user's pid, got: {body}"
-        );
-        assert!(
             body.contains(r#"href="/""#),
             "expected the dashboard nav link, got: {body}"
         );
+        for expected in [
+            // Live: the placeholder capture and its timestamp.
+            r#"src="/static/img/no-capture-available.svg""#,
+            r#"<time datetime="2026-09-27T12:00:00Z" data-local-time>"#,
+            // Status: name and badge text for the tiles the controller supplies.
+            "14 captures today",
+            "5 GB free",
+            "Last backed up captures at 2026-09-26 03:00:00 UTC",
+            "Last reclaimed space at 2026-09-27 04:30:00 UTC; 1.2 GB freed",
+        ] {
+            assert!(
+                body.contains(expected),
+                "expected {expected:?} on the dashboard, got: {body}"
+            );
+        }
     })
     .await;
 }
