@@ -14,7 +14,14 @@ use migration::Migrator;
 use std::{path::Path, sync::Arc};
 
 #[allow(unused_imports)]
-use crate::{controllers, initializers, models::_entities::users, monitor::SystemMonitor};
+use crate::{
+    controllers,
+    hardware::{Hardware, HardwareConfig},
+    initializers,
+    models::_entities::users,
+    monitor::SystemMonitor,
+    tasks,
+};
 
 pub struct App;
 #[async_trait]
@@ -41,10 +48,14 @@ impl Hooks for App {
         create_app::<Self, Migrator>(mode, environment, config).await
     }
 
-    /// Builds the `/system` page's monitor once per process: sysinfo's CPU usage is a delta
-    /// between two reads, so every request must share one `System`.
+    /// Builds the per-process singletons once: the `/system` page's monitor (sysinfo's CPU usage
+    /// is a delta between two reads, so every request must share one `System`) and the hardware
+    /// bundle (a fan, I2C bus and camera are one-per-process resources).
     async fn after_context(ctx: AppContext) -> Result<AppContext> {
         ctx.shared_store.insert(Arc::new(SystemMonitor::new()));
+        ctx.shared_store.insert(Arc::new(Hardware::from_config(
+            &HardwareConfig::from_context(&ctx.config)?,
+        )?));
         Ok(ctx)
     }
 
@@ -66,8 +77,8 @@ impl Hooks for App {
         Ok(())
     }
 
-    #[allow(unused_variables)]
     fn register_tasks(tasks: &mut Tasks) {
+        tasks.register(tasks::hardware_check::HardwareCheck);
         // tasks-inject (do not remove)
     }
     async fn truncate(ctx: &AppContext) -> Result<()> {
