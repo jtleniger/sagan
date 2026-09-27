@@ -77,7 +77,7 @@ fn renders_dashboard_inside_the_app_shell() {
                             "name": "Disk",
                             "status": "OK",
                             "status_css": "bg-amber-100 text-amber-800",
-                            "text": "5 GB free"
+                            "text": "3.0 GiB free of 24.0 GiB"
                         }
                     ]
                 }
@@ -119,7 +119,7 @@ fn renders_dashboard_inside_the_app_shell() {
         "14 captures today",
         "bg-emerald-100 text-emerald-800",
         "Disk",
-        "5 GB free",
+        "3.0 GiB free of 24.0 GiB",
         "bg-amber-100 text-amber-800",
     ] {
         assert!(
@@ -151,12 +151,9 @@ fn parse_data_sample(rendered: &str) -> serde_json::Value {
     serde_json::from_str(&unescaped).expect("the payload should be valid json")
 }
 
-#[test]
-fn renders_system_page_with_metrics_and_chart_payload() {
-    let view = engine();
-
-    // The same object the controller builds; every field the templates read.
-    let sample = data!({
+/// The `sample` object the system page reads, with `disk` as the only variation.
+fn system_sample(disk: &serde_json::Value) -> serde_json::Value {
+    data!({
         "taken_at_ms": 1_758_000_000_000_i64,
         "cpu_total": 42.0,
         "cpu_total_label": "42.0%",
@@ -177,8 +174,28 @@ fn renders_system_page_with_metrics_and_chart_payload() {
             "swap_used_bytes": 0_u64,
             "swap_label": "0 B / 0 B"
         },
-        "temps": [{"label": "coretemp Package id 0", "celsius": 45.0, "celsius_label": "45.0 °C"}]
-    });
+        "temps": [{"label": "coretemp Package id 0", "celsius": 45.0, "celsius_label": "45.0 °C"}],
+        "disk": disk
+    })
+}
+
+#[test]
+fn renders_system_page_with_metrics_and_chart_payload() {
+    let view = engine();
+
+    // The same object the controller builds; every field the templates read.
+    let sample = system_sample(&data!({
+        "mount_point": "/",
+        "file_system": "ext4",
+        "total_bytes": 25_769_803_776_u64,
+        "used_bytes": 18_361_767_936_u64,
+        "available_bytes": 7_408_035_840_u64,
+        "used_percent": 71.3,
+        "used_percent_label": "71.3%",
+        "used_label": "17.1 GiB",
+        "total_label": "24.0 GiB",
+        "available_label": "6.9 GiB"
+    }));
     let sample_json = serde_json::to_string(&sample).expect("the sample should serialize");
 
     let rendered = view
@@ -204,6 +221,8 @@ fn renders_system_page_with_metrics_and_chart_payload() {
         "cpu1",
         "3.0 GiB",
         "coretemp Package id 0",
+        "6.9 GiB available · / (ext4)",
+        "24.0 GiB",
     ] {
         assert!(
             rendered.contains(expected),
@@ -216,6 +235,32 @@ fn renders_system_page_with_metrics_and_chart_payload() {
     assert_eq!(payload["cpu_total"], data!(42.0));
     assert_eq!(payload["memory"]["used_percent"], data!(37.5));
     assert_eq!(payload["temps"][0]["celsius"], data!(45.0));
+    assert_eq!(payload["disk"]["mount_point"], data!("/"));
+}
+
+#[test]
+fn renders_system_page_without_a_disk() {
+    let view = engine();
+    let sample = system_sample(&data!(null));
+    let sample_json = serde_json::to_string(&sample).expect("the sample should serialize");
+
+    let rendered = view
+        .render(
+            "system/index.html",
+            data!({
+                "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
+                "active": "system",
+                "info": {"hostname": "host-1", "os": "Debian GNU/Linux 13", "arch": "x86_64"},
+                "sample": sample,
+                "sample_json": sample_json
+            }),
+        )
+        .expect("the system view should render without a disk");
+
+    assert!(
+        rendered.contains("No disks reported by this host."),
+        "expected the no-disk text, got: {rendered}"
+    );
 }
 
 #[test]

@@ -6,10 +6,19 @@ pub mod logs;
 
 pub mod system;
 
-use crate::{models::users, views::user::UserView};
+use std::sync::Arc;
+
+use crate::{models::users, monitor::SystemMonitor, views::user::UserView};
 // `auth::JWT` would resolve to the local `pub mod auth` in this module.
 use loco_rs::prelude::auth::JWT;
 use loco_rs::prelude::*;
+
+/// The process-wide host monitor, built at boot in `Hooks::after_context`.
+pub(crate) fn monitor(ctx: &AppContext) -> Result<Arc<SystemMonitor>> {
+    ctx.shared_store
+        .get::<Arc<SystemMonitor>>()
+        .ok_or(Error::InternalServerError)
+}
 
 /// The signed-in user's view, or `None` for a visitor who must be sent to the login form.
 ///
