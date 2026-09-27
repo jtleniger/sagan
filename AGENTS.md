@@ -32,11 +32,20 @@ not, read it directly — it is a normal markdown file.
 
 ## Before you call it done
 
+Run exactly what CI runs (`.github/workflows/ci.yaml`) — the plain
+`cargo clippy --all-targets -- -D warnings` from the stock Loco checklist does
+**not** match, because CI also enables the pedantic and nursery groups and
+`-D warnings` makes those deny rather than warn:
+
 ```sh
-cargo fmt --all
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W rust-2018-idioms
+cargo test --all-features --all
 ```
+
+`--all-targets` is deliberately a superset of CI (it also lints `tests/` and
+examples); drop it for the literal CI invocation. If either file changes, the
+workflow wins — keep these three commands in sync with it.
 
 ## More
 

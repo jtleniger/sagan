@@ -13,7 +13,7 @@ enum StatusLevel {
 
 impl StatusLevel {
     /// The badge's Tailwind classes: green, yellow or red, in that order.
-    fn css(self) -> &'static str {
+    const fn css(self) -> &'static str {
         match self {
             Self::Good => "bg-emerald-100 text-emerald-800",
             Self::Ok => "bg-amber-100 text-amber-800",
@@ -22,7 +22,7 @@ impl StatusLevel {
     }
 
     /// The badge's text.
-    fn label(self) -> &'static str {
+    const fn label(self) -> &'static str {
         match self {
             Self::Good => "Good",
             Self::Ok => "OK",

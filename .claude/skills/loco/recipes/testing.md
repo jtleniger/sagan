@@ -142,9 +142,9 @@ cargo test can_register          # one test by name
 ## Before calling work done
 
 ```sh
-cargo fmt --all
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W rust-2018-idioms
+cargo test --all-features --all
 ```
 
 A change is not finished until all three are clean.

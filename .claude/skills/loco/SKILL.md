@@ -133,8 +133,12 @@ cargo loco version
 
 ## Before you call it done
 
-- `cargo fmt --all`
-- `cargo clippy --all-targets -- -D warnings`
-- `cargo test`
+- `cargo fmt --all -- --check`
+- `cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W rust-2018-idioms`
+- `cargo test --all-features --all`
+
+This app's CI (`.github/workflows/ci.yaml`) adds the pedantic and nursery groups
+to the stock `-D warnings` command above; check that file before trusting any
+"before you call it done" command, here or elsewhere.
 - No entity serialized straight to a response; no `tokio::spawn`; no
   `std::env::var`; no `.unwrap()` in a handler; no edits under `_entities/`.
