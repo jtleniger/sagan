@@ -68,6 +68,16 @@ fn renders_dashboard_inside_the_app_shell() {
         rendered.contains(r#"href="/""#),
         "expected the dashboard nav link from the shell, got: {rendered}"
     );
+    // The shell's nav is what every page renders, so a page added to the sidebar
+    // must be reachable from here, not only from itself.
+    assert!(
+        rendered.contains(r#"href="/logs""#),
+        "expected the logs nav link from the shell, got: {rendered}"
+    );
+    assert!(
+        rendered.contains(r#"href="/system""#),
+        "expected the system nav link from the shell, got: {rendered}"
+    );
     assert!(
         rendered.contains(r#"action="/logout""#),
         "expected the sign-out form from the shell, got: {rendered}"
@@ -165,4 +175,126 @@ fn renders_system_page_with_metrics_and_chart_payload() {
     assert_eq!(payload["cpu_total"], data!(42.0));
     assert_eq!(payload["memory"]["used_percent"], data!(37.5));
     assert_eq!(payload["temps"][0]["celsius"], data!(45.0));
+}
+
+#[test]
+fn renders_logs_page_with_entries_and_pager() {
+    let view = engine();
+
+    // The same object `LogsPageView` serializes; every key the template reads.
+    let rendered = view
+        .render(
+            "logs/index.html",
+            data!({
+                "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
+                "active": "logs",
+                "logs": {
+                    "entries": [{
+                        "timestamp": "2026-09-26 10:02:00.000",
+                        "timestamp_utc": "2026-09-26T10:02:00.000Z",
+                        "level": "WARN",
+                        "level_css": "bg-amber-100 text-amber-800",
+                        "target": "sagan::test",
+                        "message": "disk almost full",
+                        "extra": r#"{"k":"v"}"#
+                    }],
+                    "page": 2,
+                    "total_pages": 3,
+                    "total_items": 120,
+                    "truncated": false,
+                    "dir": "logs",
+                    "enabled": true,
+                    "level_value": "warn",
+                    "from": {
+                        "date": "2026-09-26",
+                        "time": "10:00:00",
+                        "utc": "2026-09-26T10:00:00"
+                    },
+                    "to": {"date": "", "time": "", "utc": ""},
+                    "prev_url": "/logs?page=1&level=warn",
+                    "next_url": "/logs?page=3&level=warn",
+                    "first_url": "/logs?page=1&level=warn",
+                    "last_url": "/logs?page=3&level=warn"
+                }
+            }),
+        )
+        .expect("logs view should render");
+
+    for expected in [
+        "bg-amber-100 text-amber-800",
+        "disk almost full",
+        "&quot;k&quot;:&quot;v&quot;",
+        "2026-09-26 10:02:00.000",
+        // The row's timestamp: the instant for the browser, the UTC text as the fallback.
+        r#"<time datetime="2026-09-26T10:02:00.000Z" data-local-time>"#,
+        // The filter boundary the local-time script converts: the UTC instant on the group,
+        // the split UTC values in the two controls the reader edits, and the hidden input
+        // that is the only part of the boundary submitted.
+        r#"id="logs-from" data-utc="2026-09-26T10:00:00""#,
+        r#"id="logs-from-date" aria-label="From date" value="2026-09-26""#,
+        r#"id="logs-from-time" aria-label="From time" step="1" value="10:00:00""#,
+        r#"id="logs-from-utc" name="from" value="2026-09-26T10:00:00">"#,
+        r#"src="/static/js/logs.js""#,
+        // The pager keeps the active filters, HTML-escaped in the attribute.
+        r#"href="/logs?page=3&amp;level=warn""#,
+        r#"href="/logs?page=1&amp;level=warn""#,
+        "Page 2 of 3",
+        "120 entries",
+        // The sidebar link, added by this page's `nav` block override.
+        r#"href="/logs""#,
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "expected {expected:?} in the rendered page, got: {rendered}"
+        );
+    }
+
+    assert!(
+        rendered.contains(r#"href="/system""#),
+        "the overridden nav block should keep the shell's other links, got: {rendered}"
+    );
+    assert!(
+        rendered.contains(r#"<option value="warn"  selected>"#),
+        "the level select should echo the active filter, got: {rendered}"
+    );
+}
+
+#[test]
+fn renders_logs_empty_state() {
+    let view = engine();
+
+    let rendered = view
+        .render(
+            "logs/index.html",
+            data!({
+                "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
+                "active": "logs",
+                "logs": {
+                    "entries": [],
+                    "page": 1,
+                    "total_pages": 1,
+                    "total_items": 0,
+                    "truncated": false,
+                    "dir": "logs",
+                    "enabled": false,
+                    "level_value": "all",
+                    "from": {"date": "", "time": "", "utc": ""},
+                    "to": {"date": "", "time": "", "utc": ""},
+                    "prev_url": null,
+                    "next_url": null,
+                    "first_url": null,
+                    "last_url": null
+                }
+            }),
+        )
+        .expect("the empty logs view should render");
+
+    assert!(
+        rendered.contains("No log entries match these filters."),
+        "expected the empty state, got: {rendered}"
+    );
+    assert!(
+        rendered.contains("File logging is disabled"),
+        "expected the disabled-logger note, got: {rendered}"
+    );
 }

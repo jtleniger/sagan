@@ -63,8 +63,8 @@ A page's context contract with the shell is two keys:
 ```
 
 `user` is `views::user::UserView`; `active` is the nav key (`"dashboard"`,
-`"system"`) that `layouts/app.html` compares to highlight the current link.
-Pages that render through the shell must pass both.
+`"system"`, `"logs"`) that `layouts/app.html` compares to highlight the current
+link. Pages that render through the shell must pass both.
 
 Tera 2 resolves `{% extends %}` and `{% block %}` when templates are **loaded**,
 so a child whose parent does not exist (or a block it never defines) fails at
@@ -129,16 +129,17 @@ hand-wiring is how "the handler exists but 404s" happens.
    {% endblock %}
    ```
 
-4. Add the sidebar link by overriding `nav` — `{{ super() }}` keeps the existing
-   links — and add the nav key to the page's `active`:
+4. Add the sidebar link to `layouts/app.html`'s `nav` block — that block is what
+   every page renders, so a link added there is reachable from all of them —
+   and add the page's nav key to its `active`:
 
    ```html
-   {% block nav %}
-   {{ super() }}
-   <a href="/reports" class="block rounded-md px-3 py-2 text-sm font-medium
-      {% if active == "reports" %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}">Reports</a>
-   {% endblock %}
+   <a href="/reports"
+      class="block rounded-md px-3 py-2 text-sm font-medium {% if active == "reports" %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}">Reports</a>
    ```
+
+   A `nav` override in a page template (with `{{ super() }}` to keep the
+   existing links) only affects that one page; the shell is where a link goes.
 
 5. `cargo test` — `tests/views/render.rs` renders templates without a server, so
    a Tera mistake (bad key, missing parent, unknown function) fails there in
@@ -152,3 +153,48 @@ step, no `node_modules`. The production swap is a compiled
 `assets/static/css/app.css` built with the Tailwind CLI, referenced from the
 `head` block instead — out of scope here, and `base.html` is the single place it
 touches.
+
+### The base layer
+
+`base.html` carries one `<style type="text/tailwindcss">` block, outside
+`{% block head %}` so that a page overriding that block without `{{ super() }}`
+cannot drop it. It holds the rules that belong to every element of a kind rather
+than to one page — today, the pointer cursor on controls:
+
+```css
+@layer base {
+  button:not(:disabled), select:not(:disabled), input[type="datetime-local"]:not(:disabled) { … }
+}
+```
+
+A browser's own default for `button` and `select` is the arrow cursor, and
+Tailwind v4's preflight — unlike v3's — deliberately leaves it alone, so every
+button used to need `cursor-pointer` written on it by hand. Extend that block
+rather than repeating a utility; `@layer base` is what keeps a `cursor-*` utility
+able to override it for a single element. CSS that is not Tailwind-compiled goes
+in a plain `<style>` — an unlayered rule outranks every utility class.
+
+## Dates and times
+
+**The server speaks UTC; the browser speaks the reader's zone.** Every timestamp
+the backend stores, filters on, or renders is UTC, and so are the `?from=`/`?to=`
+values it parses. Showing them locally, and converting back before the form is
+submitted, is the browser's job; `assets/static/js/logs.js` is the working
+example, and these are the three hooks it uses:
+
+|Markup|Contract|
+|---|---|
+|`<time datetime="…Z" data-local-time>UTC text</time>`|`datetime` carries the instant; the script rewrites the text in the reader's locale and puts the instant in `title`. The UTC text is the fallback for a reader without the script.|
+|A group with an `id` and `data-utc="YYYY-MM-DDTHH:MM:SS"`|The reader-facing half of a filter boundary: a `-date` and a `-time` input, which the script fills from `data-utc` on the reader's own clock, and a `-utc` input, which is the only part of the boundary submitted. All three are found by the group's `id` plus that suffix.|
+|The `-utc` input (`<input type="hidden" name="from">`)|Starts holding the server's UTC instant, so the range survives a submit of the form's other fields with or without the script. On submit the script rewrites it from the two controls — or empties it, which is what clears the filter — so exactly one `from`/`to` reaches the query string.|
+
+Two controls rather than one `datetime-local`, because Firefox gives that input
+no time picker. The cost of the split is that the reader-facing controls carry no
+`name`: a page whose script never loads shows the UTC instant but cannot change
+it. That is the trade — a boundary is the script's to submit, and the backend's
+to read as UTC.
+
+A DTO backing such a page therefore carries both ends of the instant:
+`LogEntryView::timestamp` (UTC text, the fallback) and
+`LogEntryView::timestamp_utc` (RFC 3339, what the script reads) — and, for a
+boundary, `LogsBoundaryView`'s `date`/`time`/`utc`.
