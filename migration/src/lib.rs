@@ -4,6 +4,7 @@ pub use sea_orm_migration::prelude::*;
 mod m20220101_000001_users;
 mod m20260926_000002_seed_default_user;
 
+mod m20260927_202919_app_settings;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -12,6 +13,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20220101_000001_users::Migration),
             Box::new(m20260926_000002_seed_default_user::Migration),
+            Box::new(m20260927_202919_app_settings::Migration),
             // inject-above (do not remove this comment)
         ]
     }

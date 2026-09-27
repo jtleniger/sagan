@@ -28,8 +28,9 @@ impl Task for HardwareCheck {
 
     async fn run(&self, ctx: &AppContext, vars: &task::Vars) -> Result<()> {
         let hardware = Hardware::of(ctx)?;
-        // `Unavailable` is a fact about this host, not a failure: on a laptop the mock camera
-        // reports it, and the probe still exits 0. Anything else means hardware that should have
+        // `Unavailable` is a fact about this host, not a failure: the mock camera frames, so a
+        // laptop writes a file too; `Unavailable` is the Pi driver's answer when no camera is
+        // attached, and the probe still exits 0. Anything else means hardware that should have
         // answered did not, and the task fails with the reasons.
         let mut failures: Vec<String> = Vec::new();
 

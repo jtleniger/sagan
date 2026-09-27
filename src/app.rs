@@ -18,7 +18,7 @@ use crate::{
     controllers,
     hardware::{Hardware, HardwareConfig},
     initializers,
-    models::_entities::users,
+    models::_entities::{app_settings, users},
     monitor::SystemMonitor,
     tasks,
 };
@@ -71,6 +71,7 @@ impl Hooks for App {
             .add_route(controllers::logs::routes())
             .add_route(controllers::dashboard::routes())
             .add_route(controllers::auth::routes())
+            .add_route(controllers::configuration::routes())
     }
     async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
         // no background workers yet
@@ -83,6 +84,7 @@ impl Hooks for App {
     }
     async fn truncate(ctx: &AppContext) -> Result<()> {
         truncate_table(&ctx.db, users::Entity).await?;
+        truncate_table(&ctx.db, app_settings::Entity).await?;
         Ok(())
     }
     async fn seed(_ctx: &AppContext, _base: &Path) -> Result<()> {

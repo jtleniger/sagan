@@ -63,8 +63,8 @@ A page's context contract with the shell is two keys:
 ```
 
 `user` is `views::user::UserView`; `active` is the nav key (`"dashboard"`,
-`"system"`, `"logs"`) that `layouts/app.html` compares to highlight the current
-link. Pages that render through the shell must pass both.
+`"system"`, `"logs"`, `"configuration"`) that `layouts/app.html` compares to
+highlight the current link. Pages that render through the shell must pass both.
 
 Tera 2 resolves `{% extends %}` and `{% block %}` when templates are **loaded**,
 so a child whose parent does not exist (or a block it never defines) fails at

@@ -19,8 +19,8 @@ pub const MAX_SPEED_PERCENT: u8 = 100;
 /// A hardware call that did not do what the caller asked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HardwareError {
-    /// This host has no such hardware (the mock camera, or a `driver: pi` build started on a
-    /// machine with no Pi peripheral behind the syscall).
+    /// This host has no such hardware (a `driver: pi` build started on a machine with no Pi
+    /// peripheral behind the syscall).
     Unavailable,
     /// The OS or the device refused the call; the string is the underlying message.
     Io(String),
@@ -206,10 +206,12 @@ mod tests {
                 .readings()
                 .await
                 .expect("the mock sensor always reads");
-            assert!(matches!(
-                hardware.camera.capture().await,
-                Err(HardwareError::Unavailable)
-            ));
+            let frame = hardware
+                .camera
+                .capture()
+                .await
+                .expect("the mock camera always frames");
+            assert_eq!((frame.width, frame.height), (64, 48));
         }
     }
 
