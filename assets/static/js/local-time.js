@@ -15,24 +15,37 @@
     return !isNaN(date.getTime());
   }
 
-  function showLocalTimes() {
-    // Explicit fields rather than `dateStyle`/`timeStyle`, which cannot carry the
-    // milliseconds a log record is read for.
-    var formatter = new Intl.DateTimeFormat(undefined, {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      fractionalSecondDigits: 3
-    });
+  // Explicit fields rather than `dateStyle`/`timeStyle`. Two formatters: an instant that
+  // carries milliseconds keeps them (a log record is read for them), an instant that does
+  // not stays second-precision — so the reader-facing text never gains precision the UTC
+  // fallback it replaces did not have.
+  var SECOND = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
 
+  var MILLIS = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    fractionalSecondDigits: 3
+  });
+
+  function showLocalTimes() {
     var rows = document.querySelectorAll("time[data-local-time]");
     for (var i = 0; i < rows.length; i++) {
-      var date = new Date(rows[i].getAttribute("datetime"));
+      var datetime = rows[i].getAttribute("datetime");
+      var date = new Date(datetime);
       if (!isValid(date)) continue;
 
+      var formatter = datetime.indexOf(".") === -1 ? SECOND : MILLIS;
       rows[i].textContent = formatter.format(date);
       // The UTC instant stays one hover away.
       rows[i].title = date.toISOString();
