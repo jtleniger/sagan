@@ -206,7 +206,14 @@ fn renders_system_page_with_metrics_and_chart_payload() {
                 "active": "system",
                 "info": {"hostname": "host-1", "os": "Debian GNU/Linux 13", "arch": "x86_64"},
                 "sample": sample,
-                "sample_json": sample_json
+                "sample_json": sample_json,
+                "hardware": {
+                    "fan": {"speed_label": "60%"},
+                    "environment": {
+                        "humidity_label": "45.0%",
+                        "pressure_label": "1013.0 hPa"
+                    }
+                }
             }),
         )
         .expect("system view should render");
@@ -223,6 +230,13 @@ fn renders_system_page_with_metrics_and_chart_payload() {
         "coretemp Package id 0",
         "6.9 GiB available · / (ext4)",
         "24.0 GiB",
+        // The hardware card: the fan's commanded duty and the ambient reading.
+        "Fan speed",
+        "60%",
+        "Humidity",
+        "45.0%",
+        "Pressure",
+        "1013.0 hPa",
     ] {
         assert!(
             rendered.contains(expected),
@@ -252,7 +266,8 @@ fn renders_system_page_without_a_disk() {
                 "active": "system",
                 "info": {"hostname": "host-1", "os": "Debian GNU/Linux 13", "arch": "x86_64"},
                 "sample": sample,
-                "sample_json": sample_json
+                "sample_json": sample_json,
+                "hardware": {"fan": null, "environment": null}
             }),
         )
         .expect("the system view should render without a disk");
@@ -260,6 +275,10 @@ fn renders_system_page_without_a_disk() {
     assert!(
         rendered.contains("No disks reported by this host."),
         "expected the no-disk text, got: {rendered}"
+    );
+    assert!(
+        rendered.contains("No fan or environment sensor reported by this host."),
+        "expected the no-hardware note, got: {rendered}"
     );
 }
 

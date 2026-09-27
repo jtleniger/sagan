@@ -120,3 +120,10 @@ auth:
     location:
       from: Cookie
       name: auth_token
+
+# The Raspberry Pi subsystems — the case fan, the BME280, the camera — live behind the traits in
+# src/hardware/. `auto` builds the Pi drivers where this build has them and the mock everywhere
+# else, so a laptop, CI, and the Pi run the same code. `mock` forces the mock on a Pi.
+settings:
+  hardware:
+    driver: auto

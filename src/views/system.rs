@@ -1,6 +1,9 @@
 use serde::Serialize;
 
-use crate::monitor::{DiskSample, SystemInfo, SystemSample, TempSample};
+use crate::{
+    hardware::Readings,
+    monitor::{DiskSample, SystemInfo, SystemSample, TempSample},
+};
 
 /// `/system`'s host tiles.
 #[derive(Debug, Serialize)]
@@ -78,6 +81,48 @@ pub struct TempView {
     pub celsius: f32,
     /// `45.0 °C`.
     pub celsius_label: String,
+}
+
+/// The fan's commanded duty as the page shows it.
+#[derive(Debug, Serialize)]
+pub struct FanView {
+    /// `60%`.
+    pub speed_label: String,
+}
+
+impl From<u8> for FanView {
+    fn from(speed_percent: u8) -> Self {
+        Self {
+            speed_label: format!("{speed_percent}%"),
+        }
+    }
+}
+
+/// The BME280's ambient reading as the page shows it — the humidity and pressure the host
+/// temperature sensors cannot provide.
+#[derive(Debug, Serialize)]
+pub struct EnvironmentView {
+    /// `45.0%`.
+    pub humidity_label: String,
+    /// `1013.0 hPa`.
+    pub pressure_label: String,
+}
+
+impl From<Readings> for EnvironmentView {
+    fn from(reading: Readings) -> Self {
+        Self {
+            humidity_label: format!("{:.1}%", round1(reading.humidity_percent)),
+            pressure_label: format!("{:.1} hPa", round1(reading.pressure_hpa)),
+        }
+    }
+}
+
+/// The hardware bundle's contribution to the live panel: each subsystem is `None` when this host
+/// has none (or it failed to answer), which the fragment renders as a note rather than a zero.
+#[derive(Debug, Serialize)]
+pub struct HardwareView {
+    pub fan: Option<FanView>,
+    pub environment: Option<EnvironmentView>,
 }
 
 /// Exactly what the polling fragment and the charts' `data-sample` payload carry.
@@ -204,5 +249,20 @@ mod tests {
     fn percent_does_not_divide_by_zero() {
         assert!(percent(0, 0).abs() < f32::EPSILON);
         assert!((percent(3, 8) - 37.5).abs() < 0.05);
+    }
+
+    #[test]
+    fn hardware_views_round_the_labels_the_page_shows() {
+        assert_eq!(FanView::from(0).speed_label, "0%");
+        assert_eq!(FanView::from(60).speed_label, "60%");
+
+        let environment = EnvironmentView::from(Readings {
+            celsius: 22.0,
+            humidity_percent: 45.04,
+            pressure_hpa: 1013.06,
+            taken_at_ms: 0,
+        });
+        assert_eq!(environment.humidity_label, "45.0%");
+        assert_eq!(environment.pressure_label, "1013.1 hPa");
     }
 }

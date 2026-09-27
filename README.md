@@ -63,6 +63,34 @@ compilation: debug
 listening on http://localhost:5150
 ```
 
+## Hardware
+
+The Raspberry Pi subsystems — a PWM case fan, an I2C BME280, the camera — live
+behind the traits in `src/hardware/`. Every host gets a bundle at boot, chosen by
+`settings.hardware.driver` in `config/<env>.yaml`:
+
+|Value|Meaning|
+|---|---|
+|`auto` (default)|The Pi drivers where the build has them, the mock everywhere else|
+|`mock`|The mock on any host — including a Pi whose hardware is being serviced|
+|`pi`|The Pi drivers, or a boot error in a build that has none|
+
+The mock is compiled for every host and is what a laptop and CI run; the Pi
+drivers (`src/hardware/pi.rs`) are not written yet, so `driver: pi` fails the
+boot rather than silently driving nothing.
+
+Probe what the running build actually has, without a browser:
+
+```sh
+cargo loco task hardware_check            # frames land in target/, override with dir:/tmp
+```
+
+It reads the BME280, sets the fan to half duty and reads it back, and writes one
+capture; a subsystem this host does not have is reported and exit status stays 0.
+
+The `/system` page's Hardware card shows the fan's commanded duty and the
+sensor's humidity and pressure, refreshed with the rest of the live panel.
+
 ## Templates
 
 Pages live in `assets/views/` and extend the shell in
