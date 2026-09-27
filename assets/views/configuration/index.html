@@ -1,0 +1,44 @@
+{% extends "layouts/app.html" %}
+
+{% block meta_title %}Configuration · Sagan{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold tracking-tight">Configuration</h1>
+<p class="mt-1 text-sm text-slate-600">Application settings, stored in the database and applied while the application runs.</p>
+
+{% if saved %}
+<p class="mt-4 max-w-3xl rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Saved.</p>
+{% endif %}
+{% if error %}
+<p class="mt-4 max-w-3xl rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</p>
+{% endif %}
+
+{# The three radios are `captures::KINDS` and the three `CaptureInterval` variants: adding a
+   fourth kind means a radio here and a variant there. #}
+<section class="mt-6 max-w-3xl rounded-lg border border-slate-200 bg-white p-4">
+  <h2 class="text-sm font-semibold text-slate-900">Captures</h2>
+  <p class="mt-1 text-sm text-slate-600">How often the camera takes a picture. Currently: {{ captures.current }}.</p>
+
+  <form method="post" action="/configuration/captures" class="mt-4 space-y-3">
+    <label class="flex items-center gap-2 text-sm text-slate-700">
+      <input type="radio" name="kind" value="every_minutes" {% if captures.kind == "every_minutes" %}checked{% endif %}>
+      Every
+      <input type="number" name="minutes" min="{{ captures.minutes_min }}" max="{{ captures.minutes_max }}" value="{{ captures.minutes }}"
+             class="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm">
+      minutes
+    </label>
+    <label class="flex items-center gap-2 text-sm text-slate-700">
+      <input type="radio" name="kind" value="hourly" {% if captures.kind == "hourly" %}checked{% endif %}>
+      Every hour
+    </label>
+    <label class="flex items-center gap-2 text-sm text-slate-700">
+      <input type="radio" name="kind" value="daily_at" {% if captures.kind == "daily_at" %}checked{% endif %}>
+      Every day at
+      <input type="time" name="at" value="{{ captures.at }}"
+             class="rounded-md border border-slate-300 px-2 py-1 text-sm">
+    </label>
+    <button type="submit"
+            class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">Save</button>
+  </form>
+</section>
+{% endblock %}

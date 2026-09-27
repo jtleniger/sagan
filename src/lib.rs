@@ -1,4 +1,5 @@
 pub mod app;
+pub mod captures;
 pub mod controllers;
 pub mod data;
 pub mod dtos;

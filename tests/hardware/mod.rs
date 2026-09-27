@@ -4,7 +4,7 @@
 use loco_rs::testing::prelude::*;
 use sagan::{
     app::App,
-    hardware::{Hardware, HardwareError, MAX_SPEED_PERCENT},
+    hardware::{Hardware, MAX_SPEED_PERCENT},
 };
 use serial_test::serial;
 
@@ -32,9 +32,13 @@ async fn boot_registers_a_bundle_the_pages_can_drive() {
     assert!((35.0..=55.0).contains(&reading.humidity_percent));
     assert!((1008.0..=1018.0).contains(&reading.pressure_hpa));
 
-    // No camera on this host, and the mock says so rather than pretending.
-    assert!(matches!(
-        hardware.camera.capture().await,
-        Err(HardwareError::Unavailable)
-    ));
+    // No ribbon on this host, and the mock still frames: the capture path runs here.
+    let frame = hardware
+        .camera
+        .capture()
+        .await
+        .expect("the mock camera frames");
+    assert_eq!(frame.jpeg.len(), 350);
+    assert_eq!((frame.width, frame.height), (64, 48));
+    assert!(frame.jpeg.starts_with(&[0xFF, 0xD8]));
 }
