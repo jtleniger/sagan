@@ -88,6 +88,9 @@ cargo loco task hardware_check            # frames land in target/, override wit
 It reads the BME280, sets the fan to half duty and reads it back, and writes one
 capture; a subsystem this host does not have is reported and exit status stays 0.
 
+The `/system` page's Hardware card shows the fan's commanded duty and the
+sensor's humidity and pressure, refreshed with the rest of the live panel.
+
 ## Templates
 
 Pages live in `assets/views/` and extend the shell in

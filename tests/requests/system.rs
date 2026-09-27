@@ -141,6 +141,25 @@ async fn metrics_returns_a_pollable_fragment() {
             "expected the next poll's trigger, got: {body}"
         );
 
+        // The hardware card is rendered from the mock bundle: the fan's commanded duty (nothing
+        // has driven it, so it starts stopped) and the sensor's humidity/pressure. The humidity
+        // and pressure values drift on the mock's slow sine, so their exact reading is asserted
+        // in `views::system`'s unit test; here it is enough that the rows are populated.
+        for expected in [
+            "Fan speed",
+            // The row's value, not a `0%` inside a core's `0.0%` label.
+            ">0%</dd>",
+            "Humidity",
+            "%</dd>",
+            "Pressure",
+            "hPa</dd>",
+        ] {
+            assert!(
+                body.contains(expected),
+                "expected {expected:?} in the hardware card, got: {body}"
+            );
+        }
+
         // The panel's heading is not the reading: the disk must be in the payload the page
         // carries, measured from this host.
         let payload = data_sample(&body);

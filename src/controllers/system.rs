@@ -1,9 +1,29 @@
 use crate::{
     controllers::{current_user, monitor},
-    views::system::{SystemInfoView, SystemSampleView},
+    hardware::Hardware,
+    views::system::{EnvironmentView, FanView, HardwareView, SystemInfoView, SystemSampleView},
 };
 use axum::http::StatusCode;
 use loco_rs::prelude::*;
+
+/// The live panel's hardware values, read from the bundle `Hooks::after_context` built.
+///
+/// A subsystem that reports `Unavailable` (or fails) on this host becomes `None`: the fragment
+/// shows a note for that row rather than a zero it never measured. The mock the laptop and CI
+/// run always answers, so the rows are populated there.
+async fn hardware(ctx: &AppContext) -> Result<HardwareView> {
+    let hardware = Hardware::of(ctx)?;
+
+    Ok(HardwareView {
+        fan: hardware.fan.speed().await.ok().map(FanView::from),
+        environment: hardware
+            .environment
+            .readings()
+            .await
+            .ok()
+            .map(EnvironmentView::from),
+    })
+}
 
 /// `GET /system` — live host metrics.
 #[debug_handler]
@@ -30,6 +50,7 @@ async fn index(
             "info": SystemInfoView::from(monitor.info()),
             "sample": sample,
             "sample_json": sample_json,
+            "hardware": hardware(&ctx).await?,
         }),
     )
 }
@@ -60,7 +81,11 @@ async fn metrics(
     format::render().view(
         &v,
         "system/_metrics.html",
-        data!({"sample": sample, "sample_json": sample_json}),
+        data!({
+            "sample": sample,
+            "sample_json": sample_json,
+            "hardware": hardware(&ctx).await?,
+        }),
     )
 }
 
