@@ -20,7 +20,7 @@ use crate::{
     initializers,
     models::_entities::{app_settings, job_runs, users},
     monitor::SystemMonitor,
-    storage, tasks,
+    tasks,
 };
 
 pub struct App;
@@ -48,17 +48,10 @@ impl Hooks for App {
         create_app::<Self, Migrator>(mode, environment, config).await
     }
 
-    /// Builds the per-process singletons once: the app's file store (Loco's boot default is
-    /// the null driver, which fails every write), the `/system` page's monitor (sysinfo's CPU
+    /// Builds the per-process singletons once: the `/system` page's monitor (sysinfo's CPU
     /// usage is a delta between two reads, so every request must share one `System`) and the
     /// hardware bundle (a fan, I2C bus and camera are one-per-process resources).
     async fn after_context(ctx: AppContext) -> Result<AppContext> {
-        // `into_builder`, not `AppContext::builder`: the mailer, queue provider, cache and
-        // shared store the boot sequence already built must survive the one component this
-        // hook replaces.
-        let storage = storage::store(&ctx.config)?;
-        let ctx = ctx.into_builder().storage(storage).build();
-
         ctx.shared_store.insert(Arc::new(SystemMonitor::new()));
         ctx.shared_store.insert(Arc::new(Hardware::from_config(
             &HardwareConfig::from_context(&ctx.config)?,

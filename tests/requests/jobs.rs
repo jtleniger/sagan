@@ -62,7 +62,7 @@ async fn jobs_redirects_to_login_without_cookie() {
 async fn jobs_lists_the_registered_job_and_a_recorded_run() {
     request_with_config::<App, _, _>(session(), |request, ctx| async move {
         create_user(&ctx).await;
-        seed_run(&ctx, "1790557201099.jpg (350 bytes)").await;
+        seed_run(&ctx, "1790557201099.jpg").await;
 
         let login = request
             .post("/login")
@@ -79,13 +79,13 @@ async fn jobs_lists_the_registered_job_and_a_recorded_run() {
             r#"href="/jobs""#,
             "Periodic jobs",
             "capture",
-            "Takes a still image from the camera and stores it in the file store.",
+            "Takes a still image from the camera and writes it to the capture directory.",
             // A fresh database has no Captures row, so the interval is the default.
             "Every hour",
             ">succeeded<",
             // The run history, with the detail the run recorded.
             "Runs",
-            "1790557201099.jpg (350 bytes)",
+            "1790557201099.jpg",
             "Page 1 of 1",
             // The page loads the timestamp script, so it has to keep the base's own head.
             "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4",

@@ -5,13 +5,14 @@
 //! the running implementation, so the app boots and pages render.
 
 use std::{
+    path::Path,
     sync::atomic::{AtomicU8, Ordering},
     time::Instant,
 };
 
 use async_trait::async_trait;
 
-use super::{Camera, Capture, EnvironmentSensor, Fan, HardwareError, Readings, MAX_SPEED_PERCENT};
+use super::{Camera, EnvironmentSensor, Fan, HardwareError, Readings, MAX_SPEED_PERCENT};
 
 /// A [`Fan`] with no wire behind it: it remembers the duty it was last given, and starts stopped.
 pub struct MockFan {
@@ -98,11 +99,7 @@ fn simulated(elapsed_s: f32) -> (f32, f32, f32) {
     )
 }
 
-/// The simulated frame's size in pixels — the constant's real dimensions.
-const FRAME_WIDTH: u32 = 64;
-const FRAME_HEIGHT: u32 = 48;
-
-/// The frame every mock capture returns: a 64x48 JPEG (350 bytes), embedded so a host with no
+/// The frame every mock capture writes: a 64x48 JPEG (350 bytes), embedded so a host with no
 /// camera still exercises the capture path. Regenerate with
 /// `magick -size 64x48 gradient:'#334155'-'#94a3b8' -quality 60 jpeg:-` (see the plan's Appendix B
 /// for the bytes and their SHA-256).
@@ -133,21 +130,18 @@ const FRAME_JPEG: &[u8] = &[
 
 /// A [`Camera`] with no ribbon behind it.
 ///
-/// It returns the same JPEG frame on every call with a fresh server timestamp: enough for the
-/// capture path, the dashboard, and the `hardware_check` task to run on a laptop, in CI, or on a
-/// Pi whose camera is being serviced. A host that *has* a camera which cannot be used is the Pi
+/// It writes the same JPEG frame on every call — with whatever name the caller chose — so the
+/// capture path, the dashboard, and the `hardware_check` task run on a laptop, in CI, or on a Pi
+/// whose camera is being serviced. A host that *has* a camera which cannot be used is the Pi
 /// driver's `HardwareError::Unavailable` / `HardwareError::Io`, not this type.
 pub struct MockCamera;
 
 #[async_trait]
 impl Camera for MockCamera {
-    async fn capture(&self) -> Result<Capture, HardwareError> {
-        Ok(Capture {
-            jpeg: FRAME_JPEG.to_vec(),
-            width: FRAME_WIDTH,
-            height: FRAME_HEIGHT,
-            taken_at_ms: chrono::Utc::now().timestamp_millis(),
-        })
+    async fn capture(&self, dir: &Path, filename: &str) -> Result<(), HardwareError> {
+        std::fs::create_dir_all(dir)?;
+        std::fs::write(dir.join(filename), FRAME_JPEG)?;
+        Ok(())
     }
 }
 
@@ -212,26 +206,29 @@ mod tests {
         );
     }
 
+    /// A directory under the system temp dir that no other test shares. The mock camera writes
+    /// real files, so each test gets its own.
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("the clock is past the epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("sagan-{tag}-{}-{nanos}", std::process::id()))
+    }
+
     #[tokio::test]
-    async fn camera_returns_a_jpeg_frame() {
-        let frame = MockCamera
-            .capture()
+    async fn camera_writes_a_jpeg_frame_to_the_named_file() {
+        let dir = scratch("mock-camera");
+        MockCamera
+            .capture(&dir, "frame.jpg")
             .await
-            .expect("the mock camera always frames");
+            .expect("the mock camera always writes");
 
-        assert_eq!(frame.jpeg.len(), 350);
-        assert!(
-            frame.jpeg.starts_with(&[0xFF, 0xD8]),
-            "a JPEG starts with SOI"
-        );
-        assert!(frame.jpeg.ends_with(&[0xFF, 0xD9]), "and ends with EOI");
-        assert_eq!((frame.width, frame.height), (FRAME_WIDTH, FRAME_HEIGHT));
+        let bytes = std::fs::read(dir.join("frame.jpg")).expect("the frame is on disk");
+        assert_eq!(bytes.len(), 350);
+        assert!(bytes.starts_with(&[0xFF, 0xD8]), "a JPEG starts with SOI");
+        assert!(bytes.ends_with(&[0xFF, 0xD9]), "and ends with EOI");
 
-        let now_ms = chrono::Utc::now().timestamp_millis();
-        assert!(
-            (frame.taken_at_ms - now_ms).abs() < 1_000,
-            "taken_at_ms {} is not within a second of {now_ms}",
-            frame.taken_at_ms
-        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

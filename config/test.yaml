@@ -114,7 +114,7 @@ auth:
 settings:
   hardware:
     driver: auto
-  storage:
+  capture:
     # Mirrors `logger.file_appender.dir` above: a test run must never write into the
-    # repository's own `captures/`, so the store's root is under `target/`.
+    # repository's own `captures/`, so the capture directory is under `target/`.
     dir: target/test-captures

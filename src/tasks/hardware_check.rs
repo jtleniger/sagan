@@ -61,20 +61,15 @@ impl Task for HardwareCheck {
         }
 
         let dir = PathBuf::from(vars.cli_arg("dir").unwrap_or("target"));
-        match hardware.camera.capture().await {
-            Ok(capture) => {
-                std::fs::create_dir_all(&dir)?;
-                let path = dir.join(format!("hardware-check-{}.jpg", capture.taken_at_ms));
-                // `std::fs`, not `ctx.storage`: the storage driver is the null one, and the point
-                // of the probe is a file on this disk the operator can open.
-                std::fs::write(&path, &capture.jpeg)?;
-                tracing::info!(
-                    path = %path.display(),
-                    bytes = capture.jpeg.len(),
-                    width = capture.width,
-                    height = capture.height,
-                    "capture written"
-                );
+        let filename = format!(
+            "hardware-check-{}.jpg",
+            chrono::Utc::now().timestamp_millis()
+        );
+        // The driver writes the file itself, the way the Pi camera tools do; the probe only names
+        // a path the operator can open.
+        match hardware.camera.capture(&dir, &filename).await {
+            Ok(()) => {
+                tracing::info!(path = %dir.join(&filename).display(), "capture written");
             }
             Err(HardwareError::Unavailable) => {
                 tracing::warn!("no camera on this host");

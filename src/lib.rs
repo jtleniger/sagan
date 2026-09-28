@@ -9,6 +9,5 @@ pub mod jobs;
 pub mod logs;
 pub mod models;
 pub mod monitor;
-pub mod storage;
 pub mod tasks;
 pub mod views;

@@ -1,4 +1,4 @@
-//! The capture job against the real file store: what it writes, and what it reports.
+//! The capture job against the real filesystem: what it writes, and what it reports.
 
 use std::path::Path;
 
@@ -9,26 +9,25 @@ use sagan::{
 };
 use serial_test::serial;
 
-/// Where `config/test.yaml` points `settings.storage.dir`; the test resolves the same
+/// Where `config/test.yaml` points `settings.capture.dir`; the test resolves the same
 /// relative path against the same process CWD, so the two cannot disagree.
 const CAPTURE_DIR: &str = "target/test-captures";
 
 #[tokio::test]
 #[serial]
-async fn a_capture_lands_in_the_file_store() {
+async fn a_capture_writes_one_jpeg_to_the_capture_directory() {
     let boot = boot_test::<App>().await.expect("the app should boot");
-    let ctx = &boot.app_context;
-    // The store's root survives between runs; start from an empty one so "one capture,
-    // one file" means what it says.
+    // The directory survives between runs; start from an empty one so "one capture, one file"
+    // means what it says.
     let _ = std::fs::remove_dir_all(CAPTURE_DIR);
 
     let detail = jobs::CAPTURE
-        .run(ctx)
+        .run(&boot.app_context)
         .await
-        .expect("the mock camera frames and the store accepts the write");
+        .expect("the mock camera writes to the configured directory");
 
     let names: Vec<String> = std::fs::read_dir(CAPTURE_DIR)
-        .expect("the store's directory exists")
+        .expect("the capture directory exists")
         .map(|entry| {
             entry
                 .expect("a readable entry")
@@ -52,16 +51,6 @@ async fn a_capture_lands_in_the_file_store() {
     assert!(bytes.starts_with(&[0xFF, 0xD8]), "a JPEG starts with SOI");
     assert!(bytes.ends_with(&[0xFF, 0xD9]), "and ends with EOI");
 
-    // The store the app holds resolves the same key — not the null driver, which fails
-    // every write.
-    assert!(
-        ctx.storage
-            .exists(Path::new(name))
-            .await
-            .expect("the store answers"),
-        "the app's file store should see {name}"
-    );
-
-    // The detail the dispatch records names the key and its size.
-    assert_eq!(detail, format!("{name} ({} bytes)", bytes.len()));
+    // The detail the dispatch records names the file it wrote.
+    assert_eq!(detail, *name);
 }
