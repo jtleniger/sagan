@@ -1,0 +1,23 @@
+{# Polls itself: the interval must stay longer than `live::REFRESH_MS` (10 s), so a poll frames a
+   new capture rather than reusing the last one. #}
+<figure id="live-view"
+        hx-get="/live"
+        hx-trigger="every 15s"
+        hx-swap="outerHTML"
+        class="mt-3">
+  {% if live.frame %}
+  <img src="/live/image?at={{ live.frame.taken_at_ms }}"
+       alt="Live view from the camera"
+       class="aspect-video w-full rounded-md border border-slate-200 object-cover" />
+  <figcaption class="mt-2 text-xs text-slate-500">
+    Captured <time datetime="{{ live.frame.taken_at_utc }}" data-local-time>{{ live.frame.taken_at }}</time>
+  </figcaption>
+  {% else %}
+  <img src="/static/img/no-capture-available.svg"
+       alt="No live view from the camera yet"
+       class="aspect-video w-full rounded-md border border-slate-200 object-cover" />
+  {% endif %}
+  {% if live.note %}
+  <p class="mt-2 text-xs text-slate-500">{{ live.note }}</p>
+  {% endif %}
+</figure>

@@ -104,35 +104,19 @@ fn disk_status(disk: Option<&DiskSample>) -> StatusItemView {
     )
 }
 
-/// The dashboard's `Live` section: the most recent camera capture.
-#[derive(Debug, Serialize)]
-pub struct LiveView {
-    /// The capture's instant as RFC 3339 UTC — the `datetime` of the `<time>` element
-    /// `static/js/local-time.js` renders in the reader's own zone.
-    pub captured_at_utc: String,
-    /// The same instant as UTC text — the fallback a reader without JavaScript keeps.
-    pub captured_at: String,
-}
-
 /// Everything `assets/views/dashboard/index.html` reads beyond the shell's
-/// `user`/`active`.
+/// `user`/`active` and the Live card's own `live` key (`crate::live`).
 #[derive(Debug, Serialize)]
 pub struct DashboardView {
-    pub live: LiveView,
     pub status: Vec<StatusItemView>,
 }
 
 impl DashboardView {
     /// The dashboard's tiles. `Disk` is the live reading from the shared monitor; the other
-    /// three, and `LiveView`'s capture timestamp, still stand in for readings that are not
-    /// wired up yet.
+    /// three still stand in for readings that are not wired up yet.
     #[must_use]
     pub fn from_sample(sample: &SystemSample) -> Self {
         Self {
-            live: LiveView {
-                captured_at_utc: "2026-09-27T12:00:00Z".to_string(),
-                captured_at: "2026-09-27 12:00:00 UTC".to_string(),
-            },
             status: vec![
                 StatusItemView::new("Captures", StatusLevel::Good, "14 captures today"),
                 disk_status(sample.disk.as_ref()),

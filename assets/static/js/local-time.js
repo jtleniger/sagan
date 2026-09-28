@@ -57,4 +57,9 @@
   } else {
     showLocalTimes();
   }
+
+  // htmx inserts fresh `time[data-local-time]` elements (the front page's Live card, every
+  // 15 s). The function is idempotent — it re-derives the text from `datetime` — so running it
+  // again after a swap is safe.
+  document.body.addEventListener("htmx:afterSwap", showLocalTimes);
 })();

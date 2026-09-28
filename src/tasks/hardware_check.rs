@@ -7,7 +7,10 @@ use std::path::PathBuf;
 
 use loco_rs::prelude::*;
 
-use crate::hardware::{Hardware, HardwareError, MAX_SPEED_PERCENT};
+use crate::{
+    camera_lock::CameraLock,
+    hardware::{Hardware, HardwareError, MAX_SPEED_PERCENT},
+};
 
 /// The duty the fan is put at while probing: audible on a real fan, and the read-back below is
 /// asserted to match it.
@@ -65,6 +68,9 @@ impl Task for HardwareCheck {
             "hardware-check-{}.jpg",
             chrono::Utc::now().timestamp_millis()
         );
+        // The camera is one resource: the live view's on-demand capture takes the same lock
+        // (`crate::camera_lock`), so the probe frames only when the camera is free.
+        let _lock = CameraLock::acquire().await?;
         // The driver writes the file itself, the way the Pi camera tools do; the probe only names
         // a path the operator can open.
         match hardware.camera.capture(&dir, &filename).await {

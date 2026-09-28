@@ -1,4 +1,5 @@
 pub mod app;
+pub mod camera_lock;
 pub mod captures;
 pub mod controllers;
 pub mod data;
@@ -6,6 +7,7 @@ pub mod dtos;
 pub mod hardware;
 pub mod initializers;
 pub mod jobs;
+pub mod live;
 pub mod logs;
 pub mod models;
 pub mod monitor;

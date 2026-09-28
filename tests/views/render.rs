@@ -62,10 +62,6 @@ fn renders_dashboard_inside_the_app_shell() {
                 "active": "dashboard",
                 // The same object `DashboardView` serializes; every key the template reads.
                 "dashboard": {
-                    "live": {
-                        "captured_at_utc": "2026-09-27T12:00:00Z",
-                        "captured_at": "2026-09-27 12:00:00 UTC"
-                    },
                     "status": [
                         {
                             "name": "Captures",
@@ -80,6 +76,12 @@ fn renders_dashboard_inside_the_app_shell() {
                             "text": "3.0 GiB free of 24.0 GiB"
                         }
                     ]
+                },
+                // The Live card's own payload, a top-level key like the system page's `sample`.
+                // No frame yet, so the card shows the placeholder and why.
+                "live": {
+                    "frame": null,
+                    "note": "Waiting for the first frame from the camera."
                 }
             }),
         )
@@ -109,10 +111,14 @@ fn renders_dashboard_inside_the_app_shell() {
     );
 
     for expected in [
-        // Live: the placeholder capture and its timestamp, converted by local-time.js.
+        // Live: the poll target, the placeholder, why it is empty, and the scripts that make a
+        // frame's caption local and swap the card in.
+        r#"id="live-view""#,
+        r#"hx-get="/live""#,
+        r#"hx-trigger="every 15s""#,
         r#"src="/static/img/no-capture-available.svg""#,
-        r#"<time datetime="2026-09-27T12:00:00Z" data-local-time>"#,
-        "2026-09-27 12:00:00 UTC",
+        "Waiting for the first frame from the camera.",
+        r#"src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js""#,
         r#"src="/static/js/local-time.js""#,
         // Status: the name, the text and the badge colour of a tile.
         "Captures",
@@ -127,6 +133,51 @@ fn renders_dashboard_inside_the_app_shell() {
             "expected {expected:?} in the rendered page, got: {rendered}"
         );
     }
+}
+
+#[test]
+fn renders_the_live_card_with_a_captured_frame() {
+    let view = engine();
+
+    let rendered = view
+        .render(
+            "dashboard/index.html",
+            data!({
+                "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
+                "active": "dashboard",
+                "dashboard": {"status": []},
+                // `crate::live::Live`'s payload with a frame: the image is named by the frame's
+                // instant (a cache-buster), and the caption is the `<time>` local-time.js rewrites.
+                "live": {
+                    "frame": {
+                        "taken_at_ms": 1_790_510_400_000_i64,
+                        "taken_at_utc": "2026-09-27T12:00:00Z",
+                        "taken_at": "2026-09-27 12:00:00 UTC"
+                    },
+                    "note": null
+                }
+            }),
+        )
+        .expect("dashboard view should render");
+
+    assert!(
+        rendered.contains(r#"src="/live/image?at=1790510400000""#),
+        "expected the frame's image, got: {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            r#"<time datetime="2026-09-27T12:00:00Z" data-local-time>2026-09-27 12:00:00 UTC</time>"#
+        ),
+        "expected the frame's instant both as `datetime` and as the UTC fallback, got: {rendered}"
+    );
+    assert!(
+        !rendered.contains("no-capture-available.svg"),
+        "a captured frame replaces the placeholder, got: {rendered}"
+    );
+    assert!(
+        !rendered.contains("Waiting for the first frame from the camera."),
+        "a captured frame carries no waiting note, got: {rendered}"
+    );
 }
 
 /// The `data-sample="…"` attribute value, HTML-unescaped the way a browser decodes it,

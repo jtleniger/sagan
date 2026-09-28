@@ -189,6 +189,12 @@ boundary back, and these are the three hooks:
 |A group with an `id` and `data-utc="YYYY-MM-DDTHH:MM:SS"`|The reader-facing half of a filter boundary: a `-date` and a `-time` input, which the script fills from `data-utc` on the reader's own clock, and a `-utc` input, which is the only part of the boundary submitted. All three are found by the group's `id` plus that suffix.|
 |The `-utc` input (`<input type="hidden" name="from">`)|Starts holding the server's UTC instant, so the range survives a submit of the form's other fields with or without the script. On submit the script rewrites it from the two controls — or empties it, which is what clears the filter — so exactly one `from`/`to` reaches the query string.|
 
+`local-time.js` runs on page load and again on htmx's `htmx:afterSwap`: a polled
+fragment (the front page's Live card, every 15 s) brings in fresh
+`time[data-local-time]` elements that the load-time pass never saw. The conversion
+is idempotent — it re-derives the text from `datetime` — so re-running it over the
+whole document is safe.
+
 Two controls rather than one `datetime-local`, because Firefox gives that input
 no time picker. The cost of the split is that the reader-facing controls carry no
 `name`: a page whose script never loads shows the UTC instant but cannot change
