@@ -1,8 +1,10 @@
 //! The Captures section: how often the camera takes a picture.
 //!
 //! The shape of the `captures` row's JSON payload and the rules the page's form enforces.
-//! `crate::models::app_settings` stores it; nothing reads the interval yet.
+//! `crate::models::app_settings` stores it; `crate::tasks::enqueue_capture` reads the
+//! interval to decide when a capture is due.
 
+use chrono::{NaiveTime, Timelike};
 use serde::{Deserialize, Serialize};
 
 /// The `section` value the Captures payload is stored under.
@@ -83,6 +85,25 @@ impl CaptureInterval {
             Self::EveryMinutes { minutes } => format!("Every {minutes} minutes"),
             Self::Hourly => "Every hour".to_string(),
             Self::DailyAt { hour, minute } => format!("Every day at {hour:02}:{minute:02}"),
+        }
+    }
+
+    /// Whether a capture is due at `now`, for a heartbeat that ticks once a minute.
+    ///
+    /// The interval is whole minutes on the server's own clock — the clock the page's
+    /// `Every day at 03:00` is written against. Minutes count from midnight, so an interval
+    /// that does not divide a day (7 minutes, say) restarts at midnight rather than drifting
+    /// across it. A tick that arrives more than a minute late misses its minute; the
+    /// scheduler is expected to run once a minute, not once an hour.
+    #[must_use]
+    pub fn due_at(&self, now: NaiveTime) -> bool {
+        let minute_of_day = now.hour() * 60 + now.minute();
+        match *self {
+            Self::EveryMinutes { minutes } => minute_of_day.is_multiple_of(minutes),
+            Self::Hourly => now.minute() == 0,
+            Self::DailyAt { hour, minute } => {
+                now.hour() == u32::from(hour) && now.minute() == u32::from(minute)
+            }
         }
     }
 }
@@ -285,5 +306,36 @@ mod tests {
                 "Enter a time of day as HH:MM."
             );
         }
+    }
+
+    /// A time of day on the server's clock, for `due_at`.
+    fn time(hour: u32, minute: u32) -> chrono::NaiveTime {
+        chrono::NaiveTime::from_hms_opt(hour, minute, 0).expect("a valid time of day")
+    }
+
+    #[test]
+    fn due_at_fires_on_the_minutes_the_interval_names() {
+        let every_5 = CaptureInterval::EveryMinutes { minutes: 5 };
+        assert!(every_5.due_at(time(0, 0)));
+        assert!(every_5.due_at(time(13, 35)));
+        assert!(!every_5.due_at(time(13, 36)));
+
+        // Minutes count from midnight: an interval longer than an hour still lands.
+        let every_120 = CaptureInterval::EveryMinutes { minutes: 120 };
+        assert!(every_120.due_at(time(0, 0)));
+        assert!(every_120.due_at(time(4, 0)));
+        assert!(!every_120.due_at(time(1, 0)));
+
+        let hourly = CaptureInterval::Hourly;
+        assert!(hourly.due_at(time(9, 0)));
+        assert!(!hourly.due_at(time(9, 1)));
+
+        let daily = CaptureInterval::DailyAt {
+            hour: 3,
+            minute: 30,
+        };
+        assert!(daily.due_at(time(3, 30)));
+        assert!(!daily.due_at(time(3, 31)));
+        assert!(!daily.due_at(time(15, 30)));
     }
 }

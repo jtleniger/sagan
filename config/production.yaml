@@ -81,6 +81,28 @@ queue:
   dangerously_flush: false
   
 
+# Recurring work: the scheduler executes `<binary> task <run>` as a subprocess on a
+# six-field cron whose first field is seconds. Both entries run every minute:
+#
+#   enqueue_capture  enqueues a camera capture when the Captures interval (the
+#                    /configuration page) is due — the interval is a setting until a
+#                    scheduler process is running to read it.
+#   heartbeat        records that the scheduler ticked, and enqueues a job that records
+#                    a worker drained the queue; the /jobs page reads those two stamps, so
+#                    it can tell "the clock is ticking" from "someone is working".
+#
+# Start the scheduler with `cargo loco start --all`, or as its own process:
+# `cargo loco start --worker --scheduler`.
+scheduler:
+  output: silent
+  jobs:
+    enqueue_capture:
+      run: "enqueue_capture"
+      schedule: "0 * * * * *"
+    heartbeat:
+      run: "heartbeat"
+      schedule: "0 * * * * *"
+
 # Mailer Configuration.
 mailer:
   # SMTP mailer configuration.
@@ -152,3 +174,8 @@ auth:
 settings:
   hardware:
     driver: auto
+  storage:
+    # Where the app's single file store keeps its objects — the capture worker's JPEGs.
+    # Relative paths resolve against the process working directory; the driver creates the
+    # directory at boot when it is missing.
+    dir: captures

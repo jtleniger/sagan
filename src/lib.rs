@@ -8,5 +8,8 @@ pub mod initializers;
 pub mod logs;
 pub mod models;
 pub mod monitor;
+pub mod queue;
+pub mod storage;
 pub mod tasks;
 pub mod views;
+pub mod workers;
