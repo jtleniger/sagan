@@ -4,209 +4,108 @@
 
 {% block head %}
 {{ super() }}
-{# Renders every row's `created` timestamp in the reader's own zone; the UTC text is the
-   fallback. Without `super()` the Tailwind browser build the base head loads is dropped
+{# Renders every row's `started`/`slot` timestamp in the reader's own zone; the UTC text is
+   the fallback. Without `super()` the Tailwind browser build the base head loads is dropped
    and the page renders unstyled. #}
 <script defer src="/static/js/local-time.js"></script>
 {% endblock %}
 
 {% block content %}
 <h1 class="text-2xl font-semibold tracking-tight">Jobs</h1>
-<p class="mt-1 text-sm text-slate-600">The background workers this application configures, the queue they run against, and whether the processes that move work are running.</p>
+<p class="mt-1 text-sm text-slate-600">The periodic work this application runs. One scheduled task wakes every minute, decides which jobs are due, runs them inline, and records each attempt in <span class="font-mono">job_runs</span>.</p>
 
-{# The one combination worth interrupting a reader for: rows are waiting and nothing has
-   drained the queue recently. `stuck` is computed in `views::jobs::stuck_warning`, so the
-   wording and the rule live together. #}
-{% if jobs.stuck %}
-<section class="mt-6 max-w-3xl rounded-lg border border-red-200 bg-red-50 p-4">
-  <h2 class="text-sm font-semibold text-red-900">Jobs are waiting</h2>
-  <p class="mt-1 text-sm text-red-800">{{ jobs.stuck }}</p>
-</section>
-{% endif %}
-
-{# The mode from `workers.mode`, the provider's own description, and whether it answered a
-   ping. A provider that does not answer is a status, not an error, so its failure takes the
-   healthy line's place. `health_detail` is empty when there is no provider at all, which is
-   what hides the line. #}
+{# One row per registered job: what it is, how often it is configured to run, when it last
+   ran and when it is next due. `overdue` is the due rule itself — the newest run is at an
+   older slot than the one due now — so a highlighted row means the dispatcher is not keeping
+   up, not that the job is merely old. #}
 <section class="mt-6">
-  <h2 class="text-sm font-semibold text-slate-900">Runtime</h2>
-  <p class="mt-1 text-xs text-slate-500">A process cannot see another process's worker loop, so each one stamps the database as it works. A stamp is evidence that process was alive; the age says how long ago.</p>
-  <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-    <table class="w-full text-xs">
-      <thead>
-        <tr class="text-left font-medium tracking-wide text-slate-500 uppercase">
-          <th class="px-3 py-2">Process</th>
-          <th class="px-3 py-2">State</th>
-          <th class="px-3 py-2">Last seen</th>
-          <th class="px-3 py-2">Stamp written by</th>
-          <th class="px-3 py-2">Origin</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in jobs.runtime %}
-        <tr class="border-t border-slate-100 align-top">
-          <td class="px-3 py-2 font-medium text-slate-700">{{ row.label }}</td>
-          <td class="px-3 py-2"><span class="rounded-full px-2 py-0.5 font-medium {{ row.state_css }}">{{ row.state }}</span></td>
-          <td class="px-3 py-2 tabular-nums text-slate-600">
-            {% if row.seen_utc %}<time datetime="{{ row.seen_utc }}" data-local-time>{{ row.seen_label }}</time> <span class="text-slate-400">({{ row.age_label }} ago)</span>{% else %}<span class="text-slate-500">{{ row.age_label }}</span>{% endif %}
-          </td>
-          <td class="px-3 py-2 text-slate-600">{{ row.stamp_writer }}</td>
-          <td class="px-3 py-2 font-mono text-slate-500">{{ row.origin }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <p class="mt-2 text-xs text-slate-500">Both rows are written by the scheduler's once-a-minute <span class="font-mono">heartbeat</span> entry: the task stamps <span class="font-mono">Scheduler</span>, and the job it enqueues stamps <span class="font-mono">Worker</span> when a process drains it. Two ticks without a stamp reads as stale, so one late tick is not a scare.</p>
-</section>
-
-<section class="mt-6 max-w-3xl rounded-lg border border-slate-200 bg-white p-4">
-  <h2 class="text-sm font-semibold text-slate-900">Queue</h2>
-  <dl class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-    <div>
-      <dt class="text-xs font-medium tracking-wide text-slate-500 uppercase">Mode</dt>
-      <dd class="mt-1 text-sm font-medium">{{ jobs.queue.mode }}</dd>
-      <dd class="mt-1 text-xs text-slate-500">{{ jobs.queue.mode_detail }}</dd>
-    </div>
-    <div>
-      <dt class="text-xs font-medium tracking-wide text-slate-500 uppercase">Provider</dt>
-      <dd class="mt-1 text-sm font-medium">{{ jobs.queue.provider }}</dd>
-      {% if jobs.queue.health_detail %}
-      <dd class="mt-1 text-xs {% if jobs.queue.healthy %}text-emerald-700{% else %}text-red-700{% endif %}">{{ jobs.queue.health_detail }}</dd>
-      {% endif %}
-    </div>
-  </dl>
-</section>
-
-<section class="mt-6">
-  <h2 class="text-sm font-semibold text-slate-900">Workers</h2>
-  {% if jobs.workers | length == 0 %}
-  <p class="mt-2 text-sm text-slate-600">This application registers no background workers.</p>
-  {% else %}
-  <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-    <table class="w-full text-xs">
-      <thead>
-        <tr class="text-left font-medium tracking-wide text-slate-500 uppercase">
-          <th class="px-3 py-2">Worker</th>
-          <th class="px-3 py-2">Queue</th>
-          <th class="px-3 py-2">Tags</th>
-          <th class="px-3 py-2">Purpose</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for worker in jobs.workers %}
-        <tr class="border-t border-slate-100 align-top">
-          <td class="px-3 py-2 font-mono text-slate-700">{{ worker.name }}</td>
-          <td class="px-3 py-2 text-slate-600">{{ worker.queue }}</td>
-          <td class="px-3 py-2 text-slate-600">{{ worker.tags }}</td>
-          <td class="px-3 py-2 text-slate-600">{{ worker.detail }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endif %}
-</section>
-
-{# What the scheduler will ask for. Static `config/<env>.yaml`, not the database: the cron
-   expression is a fact about the deployed file, and the *interval* a task reads is the
-   Configuration page's business. #}
-<section class="mt-6">
-  <h2 class="text-sm font-semibold text-slate-900">Scheduled</h2>
-  {% if jobs.scheduled | length == 0 %}
-  <p class="mt-2 text-sm text-slate-600">This application schedules no recurring work. Nothing enqueues jobs on a timer.</p>
-  {% else %}
-  <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-    <table class="w-full text-xs">
-      <thead>
-        <tr class="text-left font-medium tracking-wide text-slate-500 uppercase">
-          <th class="px-3 py-2">Entry</th>
-          <th class="px-3 py-2">Runs</th>
-          <th class="px-3 py-2">Schedule</th>
-          <th class="px-3 py-2">Tags</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for entry in jobs.scheduled %}
-        <tr class="border-t border-slate-100 align-top">
-          <td class="px-3 py-2 font-mono text-slate-700">{{ entry.name }}</td>
-          <td class="px-3 py-2 text-slate-600">{{ entry.run }}</td>
-          <td class="px-3 py-2 font-mono text-slate-600">{{ entry.schedule }}</td>
-          <td class="px-3 py-2 text-slate-600">{{ entry.tags }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <p class="mt-2 text-xs text-slate-500">A schedule is a heartbeat: it runs a task, and the task decides whether anything is due. With no scheduler process running, these entries do nothing.</p>
-  {% endif %}
-</section>
-
-{# The queue's rows, newest first. Cancel only means anything for a job that has not
-   started — the process performing a job never re-reads its row — and retry only for one
-   that failed, so the buttons follow the status rather than the reader's intent. #}
-<section class="mt-6">
-  <h2 class="text-sm font-semibold text-slate-900">Jobs</h2>
-  {% if not jobs.actionable %}
-  <p class="mt-2 text-sm text-slate-600">This worker mode keeps no queue, so there are no job rows to show.</p>
-  {% else %}
-  <div class="mt-3 flex items-center justify-between">
-    <p class="text-xs text-slate-500">{{ jobs.jobs | length }} job{{ "" if jobs.jobs | length == 1 else "s" }} in the queue.</p>
-    <form method="post" action="/jobs/requeue">
-      <button type="submit"
-              class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Requeue jobs stuck over {{ jobs.stale_minutes }} minutes</button>
-    </form>
-  </div>
+  <h2 class="text-sm font-semibold text-slate-900">Periodic jobs</h2>
   {% if jobs.jobs | length == 0 %}
-  <p class="mt-2 text-sm text-slate-600">Nothing in the queue.</p>
+  <p class="mt-2 text-sm text-slate-600">This application registers no periodic jobs.</p>
   {% else %}
   <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
     <table class="w-full text-xs">
       <thead>
         <tr class="text-left font-medium tracking-wide text-slate-500 uppercase">
           <th class="px-3 py-2">Job</th>
-          <th class="px-3 py-2">Worker</th>
-          <th class="px-3 py-2">Status</th>
-          <th class="px-3 py-2">Created</th>
-          <th class="px-3 py-2">Elapsed</th>
-          <th class="px-3 py-2">Tags</th>
-          <th class="px-3 py-2"></th>
+          <th class="px-3 py-2">Purpose</th>
+          <th class="px-3 py-2">Every</th>
+          <th class="px-3 py-2">Last run</th>
+          <th class="px-3 py-2">Next due</th>
         </tr>
       </thead>
       <tbody>
         {% for job in jobs.jobs %}
-        <tr class="border-t border-slate-100 align-top">
-          <td class="px-3 py-2 font-mono text-slate-500">{{ job.id_short }}</td>
-          <td class="px-3 py-2 font-mono text-slate-700">{{ job.name }}</td>
-          <td class="px-3 py-2">
-            <span class="rounded-full px-2 py-0.5 font-medium {{ job.status_css }}">{{ job.status }}</span>
+        <tr class="border-t border-slate-100 align-top {% if job.overdue %}bg-amber-50{% endif %}">
+          <td class="px-3 py-2 font-mono font-medium text-slate-700">{{ job.name }}</td>
+          <td class="px-3 py-2 text-slate-600">{{ job.detail }}</td>
+          <td class="px-3 py-2 text-slate-600">{{ job.interval }}</td>
+          <td class="px-3 py-2 tabular-nums text-slate-600">
+            <span class="rounded-full px-2 py-0.5 font-medium {{ job.last_status_css }}">{{ job.last_status }}</span>
+            {% if job.last_utc %}<time datetime="{{ job.last_utc }}" data-local-time>{{ job.last_label }}</time> <span class="text-slate-400">({{ job.last_age }} ago)</span>{% endif %}
           </td>
-          <td class="px-3 py-2 whitespace-nowrap tabular-nums text-slate-600"><time datetime="{{ job.created_utc }}" data-local-time>{{ job.created_label }}</time></td>
-          <td class="px-3 py-2 tabular-nums text-slate-600">{{ job.elapsed_label }}</td>
-          <td class="px-3 py-2 text-slate-600">{{ job.tags }}</td>
-          <td class="px-3 py-2">
-            <div class="flex justify-end gap-2">
-              {% if job.can_cancel %}
-              <form method="post" action="/jobs/{{ job.id }}/cancel">
-                <button type="submit"
-                        class="rounded-md border border-slate-300 px-2 py-1 font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
-              </form>
-              {% endif %}
-              {% if job.can_retry %}
-              <form method="post" action="/jobs/{{ job.id }}/retry">
-                <button type="submit"
-                        class="rounded-md border border-slate-300 px-2 py-1 font-medium text-slate-700 hover:bg-slate-50">Retry</button>
-              </form>
-              {% endif %}
-            </div>
+          <td class="px-3 py-2 tabular-nums text-slate-600">
+            {% if job.next_utc %}<time datetime="{{ job.next_utc }}" data-local-time>{{ job.next_label }}</time>{% else %}<span class="text-slate-500">—</span>{% endif %}
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  <p class="mt-2 text-xs text-slate-500">A job that is running cannot be cancelled — stop its worker process instead. Elapsed time is measured from the queue's own timestamps, not recorded per job.</p>
+  <p class="mt-2 text-xs text-slate-500">A highlighted row is overdue: its newest run belongs to an older slot than the one due now. A job runs inline in the scheduled task's child process, so a slow job delays the ones after it and the next tick catches them up.</p>
   {% endif %}
+</section>
+
+{# The `job_runs` history, newest slot first. The same rows are the due rule's state: the
+   unique (job, slot_at) index is what makes a claim atomic, and the newest row per job is
+   what decides whether the next tick runs it. #}
+<section class="mt-6">
+  <h2 class="text-sm font-semibold text-slate-900">Runs</h2>
+  {% if jobs.total_items == 0 %}
+  <p class="mt-2 text-sm text-slate-600">No run has been recorded yet. The first scheduled tick writes one.</p>
+  {% else %}
+  <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table class="w-full text-xs">
+      <thead>
+        <tr class="text-left font-medium tracking-wide text-slate-500 uppercase">
+          <th class="px-3 py-2">Job</th>
+          <th class="px-3 py-2">Status</th>
+          <th class="px-3 py-2">Slot</th>
+          <th class="px-3 py-2">Started</th>
+          <th class="px-3 py-2">Elapsed</th>
+          <th class="px-3 py-2">Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in jobs.runs %}
+        <tr class="border-t border-slate-100 align-top">
+          <td class="px-3 py-2 font-mono text-slate-700">{{ run.job }}</td>
+          <td class="px-3 py-2">
+            <span class="rounded-full px-2 py-0.5 font-medium {{ run.status_css }}">{{ run.status }}</span>
+          </td>
+          <td class="px-3 py-2 whitespace-nowrap tabular-nums text-slate-600"><time datetime="{{ run.slot_utc }}" data-local-time>{{ run.slot_label }}</time></td>
+          <td class="px-3 py-2 whitespace-nowrap tabular-nums text-slate-600"><time datetime="{{ run.started_utc }}" data-local-time>{{ run.started_label }}</time></td>
+          <td class="px-3 py-2 tabular-nums text-slate-600">{{ run.elapsed_label }}</td>
+          <td class="px-3 py-2 text-slate-600">{{ run.detail }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="mt-3 flex items-center justify-between text-xs">
+    <div class="flex items-center gap-2">
+      {% if jobs.first_url %}
+      <a class="rounded-md border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50" href="{{ jobs.first_url }}">First</a>
+      <a class="rounded-md border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50" href="{{ jobs.prev_url }}">Previous</a>
+      {% endif %}
+      <span class="text-slate-600">Page {{ jobs.page }} of {{ jobs.total_pages }} · {{ jobs.total_items }} run{{ "" if jobs.total_items == 1 else "s" }}</span>
+      {% if jobs.next_url %}
+      <a class="rounded-md border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50" href="{{ jobs.next_url }}">Next</a>
+      <a class="rounded-md border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50" href="{{ jobs.last_url }}">Last</a>
+      {% endif %}
+    </div>
+  </div>
+  <p class="mt-2 text-xs text-slate-500">History is kept for 30 days; the prune that runs at the end of every dispatch always keeps the newest row per job, because that row is the due-state.</p>
   {% endif %}
 </section>
 {% endblock %}

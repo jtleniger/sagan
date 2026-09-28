@@ -1,84 +1,66 @@
+use chrono::{DateTime, Local, Utc};
+use serde::Deserialize;
+
 use crate::{
     controllers::current_user,
-    models::runtime_heartbeats::{self, Source},
-    queue, views,
-    views::jobs::{
-        stuck_warning, JobRowView, JobsView, ProviderStatus, QueueView, RuntimeRowView,
-        ScheduledEntryView, WorkerRowView,
-    },
-    workers,
+    jobs,
+    models::job_runs,
+    views::jobs::{JobSummaryView, JobsView, RunRowView},
 };
 use loco_rs::prelude::*;
 
-/// `GET /jobs` — the background workers this app configures, the queue they run against,
-/// what the scheduler will ask for, and the jobs themselves.
+/// How many `job_runs` rows one page of the run history holds.
+const RUNS_PER_PAGE: u64 = 25;
+
+/// The run history's query string.
+#[derive(Debug, Deserialize)]
+pub struct RunsParams {
+    /// 1-based page number; absent or out of range is clamped into the paginator's range.
+    pub page: Option<u64>,
+}
+
+/// `GET /jobs` — the periodic jobs this app runs and the history of every attempt.
 ///
-/// A provider that fails its ping is a status, not a page error: the failure replaces the
-/// healthy line and the page still renders. The same goes for the jobs: a mode that keeps
-/// no queue ([`queue::Inspector::of`] is `None`) renders the note instead of a table, and
-/// no button, rather than an error.
+/// The summary reads each job's own answers (`jobs::configured()`) so the page cannot claim a
+/// cadence or a next-due the dispatcher would not act on; the history is the same `job_runs`
+/// table the due rule reads, simply paginated.
 #[debug_handler]
 async fn index(
     ViewEngine(v): ViewEngine<TeraView>,
     auth: Option<auth::JWT>,
     State(ctx): State<AppContext>,
+    Query(params): Query<RunsParams>,
 ) -> Result<Response> {
     let Some(user) = current_user(&ctx, auth).await? else {
         return format::redirect("/login");
     };
 
-    let provider = match &ctx.queue_provider {
-        Some(queue) => Some(ProviderStatus {
-            name: queue.describe(),
-            ping: queue.ping().await.map_err(|err| err.to_string()),
-        }),
-        None => None,
-    };
+    let now = Local::now();
+    let now_utc: DateTime<Utc> = now.with_timezone(&Utc);
 
-    let inspector = queue::Inspector::of(&ctx);
-    let jobs = match &inspector {
-        Some(inspector) => inspector.jobs().await?,
-        None => Vec::new(),
-    };
+    let mut summaries = Vec::new();
+    for job in jobs::configured() {
+        let last = job_runs::Model::newest(&ctx.db, job.name()).await?;
+        summaries.push(JobSummaryView::new(
+            job.name(),
+            job.detail(),
+            job.interval(&ctx).await?,
+            job.latest_slot(&ctx, now).await?,
+            job.next_slot(&ctx, now).await?,
+            last.as_ref(),
+            now_utc,
+        ));
+    }
 
-    // The stamps the scheduler and the worker leave behind, read as of one instant so the
-    // two rows cannot disagree about "now".
-    let now = chrono::Utc::now();
-    let seen = runtime_heartbeats::Model::seen(&ctx.db).await?;
-    let runtime: Vec<RuntimeRowView> = seen
-        .iter()
-        .map(|(source, row)| RuntimeRowView::new(*source, row.as_ref(), now))
-        .collect();
+    let paginator = job_runs::Entity::find()
+        .order_by_desc(job_runs::Column::SlotAt)
+        .order_by_desc(job_runs::Column::Id)
+        .paginate(&ctx.db, RUNS_PER_PAGE);
 
-    // Waiting work plus no recent worker stamp is the one combination that means a reader
-    // has something to fix; see `views::jobs::stuck_warning`.
-    let worker = seen
-        .iter()
-        .find(|(source, _)| *source == Source::Worker)
-        .and_then(|(_, row)| row.as_ref());
-    let rows: Vec<JobRowView> = jobs.iter().map(JobRowView::from).collect();
-    let waiting = rows.iter().filter(|row| row.is_waiting()).count();
-    let stuck = stuck_warning(
-        waiting,
-        worker.map(|row| runtime_heartbeats::liveness(Some(row.created_at), now)),
-        worker.map(|row| {
-            views::jobs::duration_label(runtime_heartbeats::age_milliseconds(row.created_at, now))
-        }),
-    );
-
-    let mut scheduled: Vec<ScheduledEntryView> = ctx
-        .config
-        .scheduler
-        .as_ref()
-        .map(|scheduler| {
-            scheduler
-                .jobs
-                .iter()
-                .map(ScheduledEntryView::from)
-                .collect()
-        })
-        .unwrap_or_default();
-    scheduled.sort_by(|left, right| left.name.cmp(&right.name));
+    let total_items = paginator.num_items().await?;
+    let total_pages = paginator.num_pages().await?.max(1);
+    let page = params.page.unwrap_or(1).clamp(1, total_pages);
+    let runs = paginator.fetch_page(page - 1).await?;
 
     format::render().view(
         &v,
@@ -87,85 +69,20 @@ async fn index(
             "user": user,
             "active": "jobs",
             "jobs": JobsView {
-                queue: QueueView::new(&ctx.config.workers.mode, provider),
-                workers: workers::configured().iter().map(WorkerRowView::from).collect(),
-                scheduled,
-                jobs: rows,
-                actionable: inspector.is_some(),
-                stale_minutes: queue::STALE_PROCESSING_MINUTES,
-                runtime,
-                stuck,
+                jobs: summaries,
+                runs: runs.iter().map(|run| RunRowView::new(run, now_utc)).collect(),
+                page,
+                total_pages,
+                total_items,
+                prev_url: (page > 1).then(|| format!("/jobs?page={}", page - 1)),
+                next_url: (page < total_pages).then(|| format!("/jobs?page={}", page + 1)),
+                first_url: (page > 1).then(|| "/jobs?page=1".to_string()),
+                last_url: (page < total_pages).then(|| format!("/jobs?page={total_pages}")),
             },
         }),
     )
 }
 
-/// `POST /jobs/{id}/cancel` — cancel a job that has not started.
-///
-/// The queue's own row is the only thing that moves; a job already being performed cannot
-/// be stopped this way (see [`queue::Inspector::cancel_queued`]).
-#[debug_handler]
-async fn cancel(
-    auth: Option<auth::JWT>,
-    State(ctx): State<AppContext>,
-    Path(id): Path<String>,
-) -> Result<Response> {
-    let Some(_user) = current_user(&ctx, auth).await? else {
-        return format::redirect("/login");
-    };
-    let inspector = inspector(&ctx)?;
-
-    inspector.cancel_queued(&id).await?;
-    format::redirect("/jobs")
-}
-
-/// `POST /jobs/{id}/retry` — put a failed job back on the queue.
-#[debug_handler]
-async fn retry(
-    auth: Option<auth::JWT>,
-    State(ctx): State<AppContext>,
-    Path(id): Path<String>,
-) -> Result<Response> {
-    let Some(_user) = current_user(&ctx, auth).await? else {
-        return format::redirect("/login");
-    };
-    let inspector = inspector(&ctx)?;
-
-    inspector.retry(&id).await?;
-    format::redirect("/jobs")
-}
-
-/// `POST /jobs/requeue` — put jobs stranded in `processing` back on the queue.
-///
-/// This is the recovery button: it exists for the case where a worker process died
-/// mid-job and the rows it was holding never moved again.
-#[debug_handler]
-async fn requeue(auth: Option<auth::JWT>, State(ctx): State<AppContext>) -> Result<Response> {
-    let Some(_user) = current_user(&ctx, auth).await? else {
-        return format::redirect("/login");
-    };
-    let inspector = inspector(&ctx)?;
-
-    inspector.requeue_stale().await?;
-    format::redirect("/jobs")
-}
-
-/// The queue inspector, or a client error when this mode keeps no queue — the state a
-/// hand-made POST reaches, since the page renders no button without one.
-fn inspector(ctx: &AppContext) -> Result<std::sync::Arc<queue::Inspector>> {
-    queue::Inspector::of(ctx).ok_or_else(|| {
-        Error::BadRequest(format!(
-            "no job queue to act on: workers.mode is {:?}",
-            ctx.config.workers.mode
-        ))
-    })
-}
-
 pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("/jobs")
-        .add("/", get(index))
-        .add("/{id}/cancel", post(cancel))
-        .add("/{id}/retry", post(retry))
-        .add("/requeue", post(requeue))
+    Routes::new().prefix("/jobs").add("/", get(index))
 }

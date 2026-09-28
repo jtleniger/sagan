@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
 #
 # Run the development stack the way a deployment runs it: the web server in one
-# process, the worker and the scheduler in another. Jobs then run in a process
-# that is not the one serving requests, and killing either process leaves the
-# other — and the queued jobs — alone.
+# process, the scheduler in another. Periodic work then runs in the scheduler's
+# own child process, not in the one serving requests, and killing either process
+# leaves the other alone.
 #
-# `cargo loco start --all` runs all three in one process instead; this script
-# exists to show the difference. Ctrl-C stops both.
+# `cargo loco start --all` runs both in one process instead; this script exists to
+# show the difference. Ctrl-C stops both.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -17,8 +17,9 @@ trap 'kill $pids 2>/dev/null || true' EXIT INT TERM
 cargo loco start &
 pids="$pids $!"
 
-# `--worker --scheduler` is one process without an HTTP server: Loco has no
-# scheduler-only mode, and a second server would fight for the port.
+# `--worker --scheduler` is one process without an HTTP server: a second server
+# would fight for the port, and the worker flag is what gives a non-server start
+# mode a process to live in.
 cargo loco start --worker --scheduler &
 pids="$pids $!"
 

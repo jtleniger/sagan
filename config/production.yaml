@@ -64,43 +64,26 @@ server:
 
 # Worker Configuration
 workers:
-  # specifies the worker mode. Options:
-  #   - BackgroundQueue - Workers operate asynchronously in the background, processing queued.
-  #   - ForegroundBlocking - Workers operate in the foreground and block until tasks are completed.
-  #   - BackgroundAsync - Workers operate asynchronously in the background, processing tasks with async capabilities.
-  mode: BackgroundQueue
-
-  
-# Queue Configuration
-queue:
-  kind: Sqlite
-  
-  # SQLite connection URI
-  uri: <%= get_env(name="QUEUE_URL") %>
-  # Dangerously flush all data in the queue table on startup. dangerous operation, make sure that you using this flag only on dev environments or test mode
-  dangerously_flush: false
-  
+  # There is no queue: periodic work runs inline in the scheduled task's child process (see
+  # `src/tasks/periodic_work.rs`). ForegroundBlocking is what boots without a queue provider;
+  # the BackgroundQueue default would try to start one and fail. Exactly one process may run
+  # the scheduler: a second would double-claim the same slots.
+  mode: ForegroundBlocking
 
 # Recurring work: the scheduler executes `<binary> task <run>` as a subprocess on a
-# six-field cron whose first field is seconds. Both entries run every minute:
+# six-field cron whose first field is seconds. One entry runs every minute:
 #
-#   enqueue_capture  enqueues a camera capture when the Captures interval (the
-#                    /configuration page) is due — the interval is a setting until a
-#                    scheduler process is running to read it.
-#   heartbeat        records that the scheduler ticked, and enqueues a job that records
-#                    a worker drained the queue; the /jobs page reads those two stamps, so
-#                    it can tell "the clock is ticking" from "someone is working".
+#   periodic_work  for each registered job, claims the due slot in `job_runs` and runs the
+#                  work inline. Capture's cadence is the Captures interval (the
+#                  /configuration page): the stored setting decides, not this cron.
 #
 # Start the scheduler with `cargo loco start --all`, or as its own process:
 # `cargo loco start --worker --scheduler`.
 scheduler:
   output: silent
   jobs:
-    enqueue_capture:
-      run: "enqueue_capture"
-      schedule: "0 * * * * *"
-    heartbeat:
-      run: "heartbeat"
+    periodic_work:
+      run: "periodic_work"
       schedule: "0 * * * * *"
 
 # Mailer Configuration.
@@ -175,7 +158,7 @@ settings:
   hardware:
     driver: auto
   storage:
-    # Where the app's single file store keeps its objects — the capture worker's JPEGs.
+    # Where the app's single file store keeps its objects — the capture job's JPEGs.
     # Relative paths resolve against the process working directory; the driver creates the
     # directory at boot when it is missing.
     dir: captures

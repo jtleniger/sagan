@@ -13,7 +13,7 @@ use loco_rs::{
 use serde::Deserialize;
 
 /// The store's root when `settings.storage.dir` is absent: the directory the capture
-/// worker's files land in, and the one `.gitignore` excludes.
+/// job's files land in, and the one `.gitignore` excludes.
 pub const DEFAULT_DIR: &str = "captures";
 
 /// The `settings.storage` block.

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use loco_rs::{
     app::{AppContext, Hooks, Initializer},
-    bgworker::{BackgroundWorker, Queue},
+    bgworker::Queue,
     boot::{create_app, BootResult, StartMode},
     config::Config,
     controller::AppRoutes,
@@ -18,9 +18,9 @@ use crate::{
     controllers,
     hardware::{Hardware, HardwareConfig},
     initializers,
-    models::_entities::{app_settings, runtime_heartbeats, users},
+    models::_entities::{app_settings, job_runs, users},
     monitor::SystemMonitor,
-    queue, storage, tasks, workers,
+    storage, tasks,
 };
 
 pub struct App;
@@ -59,12 +59,6 @@ impl Hooks for App {
         let storage = storage::store(&ctx.config)?;
         let ctx = ctx.into_builder().storage(storage).build();
 
-        // The `/jobs` page's view of the queue: absent when this mode keeps no queue, which
-        // is what makes the page say so instead of showing an empty table.
-        if let Some(inspector) = queue::Inspector::from_config(&ctx.config).await? {
-            ctx.shared_store.insert(Arc::new(inspector));
-        }
-
         ctx.shared_store.insert(Arc::new(SystemMonitor::new()));
         ctx.shared_store.insert(Arc::new(Hardware::from_config(
             &HardwareConfig::from_context(&ctx.config)?,
@@ -87,28 +81,23 @@ impl Hooks for App {
             .add_route(controllers::auth::routes())
             .add_route(controllers::configuration::routes())
     }
-    async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
-        // Every worker registered here must also appear in `workers::configured()`, which is
-        // what the `/jobs` page lists.
-        queue
-            .register(workers::capture::CaptureWorker::build(ctx))
-            .await?;
-        queue
-            .register(workers::heartbeat::HeartbeatWorker::build(ctx))
-            .await?;
+
+    /// Required by the `Hooks` trait, but this app registers no workers: periodic work runs
+    /// inline in the scheduled task (`crate::tasks::periodic_work`), so there is no queue for a
+    /// worker to drain.
+    async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
         Ok(())
     }
 
     fn register_tasks(tasks: &mut Tasks) {
-        tasks.register(tasks::enqueue_capture::EnqueueCapture);
         tasks.register(tasks::hardware_check::HardwareCheck);
-        tasks.register(tasks::heartbeat::Heartbeat);
+        tasks.register(tasks::periodic_work::PeriodicWork);
         // tasks-inject (do not remove)
     }
     async fn truncate(ctx: &AppContext) -> Result<()> {
         truncate_table(&ctx.db, users::Entity).await?;
         truncate_table(&ctx.db, app_settings::Entity).await?;
-        truncate_table(&ctx.db, runtime_heartbeats::Entity).await?;
+        truncate_table(&ctx.db, job_runs::Entity).await?;
         Ok(())
     }
     async fn seed(_ctx: &AppContext, _base: &Path) -> Result<()> {

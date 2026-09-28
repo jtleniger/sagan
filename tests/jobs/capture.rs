@@ -1,11 +1,11 @@
-//! The capture worker against the real file store: what it writes, and where.
+//! The capture job against the real file store: what it writes, and what it reports.
 
 use std::path::Path;
 
-use loco_rs::{bgworker::BackgroundWorker, testing::prelude::*};
+use loco_rs::testing::prelude::*;
 use sagan::{
     app::App,
-    workers::capture::{CaptureArgs, CaptureWorker},
+    jobs::{self, PeriodicJob},
 };
 use serial_test::serial;
 
@@ -22,9 +22,10 @@ async fn a_capture_lands_in_the_file_store() {
     // one file" means what it says.
     let _ = std::fs::remove_dir_all(CAPTURE_DIR);
 
-    CaptureWorker::perform_later(ctx, CaptureArgs {})
+    let detail = jobs::CAPTURE
+        .run(ctx)
         .await
-        .expect("test mode runs the worker inline, so a failure surfaces here");
+        .expect("the mock camera frames and the store accepts the write");
 
     let names: Vec<String> = std::fs::read_dir(CAPTURE_DIR)
         .expect("the store's directory exists")
@@ -60,4 +61,7 @@ async fn a_capture_lands_in_the_file_store() {
             .expect("the store answers"),
         "the app's file store should see {name}"
     );
+
+    // The detail the dispatch records names the key and its size.
+    assert_eq!(detail, format!("{name} ({} bytes)", bytes.len()));
 }

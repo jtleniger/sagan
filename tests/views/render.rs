@@ -405,7 +405,7 @@ fn renders_logs_empty_state() {
 }
 
 #[test]
-fn renders_jobs_page_with_workers_and_queue() {
+fn renders_jobs_page_with_summary_and_history() {
     let view = engine();
 
     let rendered = view
@@ -415,17 +415,21 @@ fn renders_jobs_page_with_workers_and_queue() {
                 "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
                 "active": "jobs",
                 "jobs": jobs_object(
-                    &queue_object(
-                        "BackgroundQueue",
-                        "Jobs are stored in the queue and run by the worker process, so they outlive the request.",
-                        "sqlite queue",
-                        Some(true),
-                        "Reachable."
-                    ),
-                    true,
-                    &[],
-                    &runtime_rows("live"),
-                    None
+                    &[job_summary(
+                        "capture",
+                        "Every 5 minutes",
+                        "succeeded",
+                        "2026-09-27T23:00:00+00:00",
+                        "12.0 s",
+                        "2026-09-27T23:05:00+00:00",
+                        false
+                    )],
+                    &[run_row("capture", "succeeded", "1790557201099.jpg (350 bytes)")],
+                    1,
+                    2,
+                    26,
+                    None,
+                    Some("/jobs?page=2")
                 )
             }),
         )
@@ -434,37 +438,82 @@ fn renders_jobs_page_with_workers_and_queue() {
     for expected in [
         // The sidebar link this page's shell adds.
         r#"href="/jobs""#,
-        "BackgroundQueue",
-        "sqlite queue",
-        "Reachable.",
-        "CaptureWorker",
-        "default",
-        "—",
+        "Periodic jobs",
+        // The one registered job, its cadence and its newest run.
+        "capture",
+        "Every 5 minutes",
         "Takes a still image from the camera and stores it in the file store.",
-        // The healthy line's colour, on the line that carries the ping's answer.
-        "text-emerald-700",
-        // The scheduler's own entries: what will be asked for, and when.
-        "Scheduled",
-        "0 * * * * *",
-        // An empty queue in a mode that has one: the note, and the recovery button, since
-        // the queue exists to be acted on.
-        "Nothing in the queue.",
-        r#"action="/jobs/requeue""#,
-        // The button names the window the requeue rule uses, from the payload rather than a
-        // second copy of the number in the template.
-        "Requeue jobs stuck over 5 minutes",
-        // This page overrides `head` to load the timestamp script, so it has to keep the
-        // base's own head — without `super()` the Tailwind build is dropped and the page
-        // renders unstyled.
-        "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4",
-        // The runtime rows: what a live stamp looks like.
-        "Runtime",
-        "Scheduler",
-        "Worker",
-        ">live<",
+        ">succeeded<",
+        // The timestamp carries the instant for the browser and the UTC text as the fallback.
+        r#"<time datetime="2026-09-27T23:00:00+00:00" data-local-time>"#,
+        "2026-09-27 23:00:00 UTC",
         "(12.0 s ago)",
-        "(3.0 s ago)",
-        "host-1 · pid 42",
+        r#"src="/static/js/local-time.js""#,
+        // The run history: the row's detail, and the pager with more to come.
+        "Runs",
+        "1790557201099.jpg (350 bytes)",
+        "Page 1 of 2",
+        "26 runs",
+        "Next",
+        "/jobs?page=2",
+        // This page overrides `head`, so it has to keep the base's own head — without
+        // `super()` the Tailwind build is dropped and the page renders unstyled.
+        "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "expected {expected:?} in the rendered page, got: {rendered}"
+        );
+    }
+
+    assert!(
+        !rendered.contains("bg-amber-50"),
+        "a job whose newest run is the due slot is not highlighted: {rendered}"
+    );
+    assert!(
+        !rendered.contains("Previous"),
+        "the first page offers no previous link: {rendered}"
+    );
+}
+
+#[test]
+fn renders_jobs_page_with_overdue_job_and_no_runs() {
+    let view = engine();
+
+    // A job that has never run, with a slot due now: the row is highlighted, the status reads
+    // `never`, and the history is the empty state rather than an empty table.
+    let rendered = view
+        .render(
+            "jobs/index.html",
+            data!({
+                "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
+                "active": "jobs",
+                "jobs": jobs_object(
+                    &[job_summary(
+                        "capture",
+                        "Every hour",
+                        "never",
+                        "",
+                        "",
+                        "2026-09-27T23:01:00+00:00",
+                        true
+                    )],
+                    &[],
+                    1,
+                    1,
+                    0,
+                    None,
+                    None
+                )
+            }),
+        )
+        .expect("jobs view should render an overdue job");
+
+    for expected in [
+        "Every hour",
+        ">never<",
+        "No run has been recorded yet.",
+        "2026-09-27 23:01:00 UTC",
     ] {
         assert!(
             rendered.contains(expected),
@@ -472,69 +521,13 @@ fn renders_jobs_page_with_workers_and_queue() {
         );
     }
     assert!(
-        !rendered.contains("text-red-700"),
-        "a provider that answered is not a failure: {rendered}"
-    );
-    assert!(
-        !rendered.contains("Jobs are waiting"),
-        "nothing is stuck while a worker is live: {rendered}"
+        rendered.contains("bg-amber-50"),
+        "an overdue job is highlighted: {rendered}"
     );
 }
 
 #[test]
-fn renders_jobs_page_without_a_queue() {
-    let view = engine();
-
-    // A mode with no provider to ping and no queue to list: the notes replace the tables,
-    // and no button is offered that could not work.
-    let without_provider = view
-        .render(
-            "jobs/index.html",
-            data!({
-                "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
-                "active": "jobs",
-                "jobs": jobs_object(
-                    &queue_object(
-                        "ForegroundBlocking",
-                        "Jobs run inline, in the process that enqueues them, before the call returns.",
-                        "None configured for ForegroundBlocking; this mode keeps no queue.",
-                        None,
-                        ""
-                    ),
-                    false,
-                    &[],
-                    &runtime_rows("missing"),
-                    None
-                )
-            }),
-        )
-        .expect("jobs view should render without a provider");
-
-    for expected in [
-        "None configured for ForegroundBlocking; this mode keeps no queue.",
-        "This worker mode keeps no queue, so there are no job rows to show.",
-        "This application schedules no recurring work.",
-        // Never stamped: the age column says what to expect instead of showing a date.
-        ">missing<",
-        "never (expects one every 60 s)",
-    ] {
-        assert!(
-            without_provider.contains(expected),
-            "expected {expected:?}, got: {without_provider}"
-        );
-    }
-    assert!(
-        !without_provider.contains("/jobs/requeue") && !without_provider.contains("text-red-700"),
-        "no provider is neither a failure nor something to act on: {without_provider}"
-    );
-    assert!(
-        !without_provider.contains("Jobs are waiting"),
-        "an empty queue is not stuck, whatever the stamps say: {without_provider}"
-    );
-}
-
-#[test]
-fn renders_jobs_page_with_job_rows_and_actions() {
+fn renders_jobs_page_second_page_with_a_previous_link() {
     let view = engine();
 
     let rendered = view
@@ -544,216 +537,138 @@ fn renders_jobs_page_with_job_rows_and_actions() {
                 "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
                 "active": "jobs",
                 "jobs": jobs_object(
-                    &queue_object(
-                        "BackgroundQueue",
-                        "Jobs are stored in the queue and run by the worker process, so they outlive the request.",
-                        "sqlite queue",
-                        Some(true),
-                        "Reachable."
-                    ),
-                    true,
+                    &[job_summary(
+                        "capture",
+                        "Every hour",
+                        "failed",
+                        "2026-09-27T23:00:00+00:00",
+                        "1m 00s",
+                        "2026-09-28T00:00:00+00:00",
+                        false
+                    )],
                     &[
-                        job_row("01M3JQUEUED000000000000001", "queued", true, false, "12.0 s"),
-                        job_row("01M3JFAILED000000000000002", "failed", false, true, "320 ms"),
-                        job_row("01M3JRUNNING00000000000003", "processing", false, false, "2m 05s"),
-                        job_row("01M3JDONE00000000000000004", "completed", false, false, "1.5 s"),
+                        run_row("capture", "failed", "hardware is not available on this host"),
+                        run_row("capture", "running", "")
                     ],
-                    &runtime_rows("stale"),
-                    Some("2 job(s) are waiting, and no worker has drained the queue for 3m 05s — is the worker process still running?")
+                    2,
+                    2,
+                    26,
+                    Some("/jobs?page=1"),
+                    None
                 )
             }),
         )
-        .expect("jobs view should render rows");
+        .expect("jobs view should render the second page");
 
     for expected in [
-        "4 jobs in the queue.",
-        // Every status keeps its own badge, and the label is Loco's spelling.
-        "bg-slate-100 text-slate-700",
+        "Page 2 of 2",
+        "Previous",
+        "First",
+        "/jobs?page=1",
+        // Each status keeps its own badge.
         "bg-red-100 text-red-800",
         "bg-sky-100 text-sky-800",
-        "bg-emerald-100 text-emerald-800",
-        ">queued<",
         ">failed<",
-        ">processing<",
-        ">completed<",
-        // The row's timestamp: the instant for the browser, the UTC text as the fallback.
-        r#"<time datetime="2026-09-27T22:27:00+00:00" data-local-time>"#,
-        "2026-09-27 22:27:00 UTC",
-        r#"src="/static/js/local-time.js""#,
-        "12.0 s",
-        "320 ms",
-        "2m 05s",
-        "camera, nightly",
-        // The queue-wide recovery button, and the two per-row ones.
-        r#"action="/jobs/requeue""#,
-        r#"action="/jobs/01M3JQUEUED000000000000001/cancel""#,
-        r#"action="/jobs/01M3JFAILED000000000000002/retry""#,
-        // A worker that stopped, and the waiting work that makes it worth saying so.
-        ">stale<",
-        "(3.0 s ago)",
+        ">running<",
+        "hardware is not available on this host",
     ] {
         assert!(
             rendered.contains(expected),
             "expected {expected:?} in the rendered page, got: {rendered}"
         );
     }
-
-    // The warning is the page's own: rows waiting with a worker that stopped draining.
-    assert!(
-        rendered.contains("Jobs are waiting")
-            && rendered.contains("2 job(s) are waiting, and no worker has drained the queue for 3m 05s — is the worker process still running?"),
-        "expected the stuck warning, got: {rendered}"
-    );
-    assert!(
-        rendered.contains("border-red-200 bg-red-50"),
-        "the warning should stand out like one, got: {rendered}"
-    );
-
-    // A row offers a button only where the queue would act on it: one cancel (the queued
-    // job), one retry (the failed one), and nothing for the running or finished rows.
-    assert_eq!(rendered.matches(">Cancel<").count(), 1, "{rendered}");
-    assert_eq!(rendered.matches(">Retry<").count(), 1, "{rendered}");
-    assert!(
-        !rendered.contains("/01M3JRUNNING00000000000003/"),
-        "a running job cannot be cancelled or retried: {rendered}"
-    );
-    assert!(
-        !rendered.contains("/01M3JDONE00000000000000004/"),
-        "a completed job cannot be cancelled or retried: {rendered}"
-    );
 }
 
-/// The `queue` object the jobs page reads, as `QueueView` serializes it.
-fn queue_object(
-    mode: &str,
-    mode_detail: &str,
-    provider: &str,
-    healthy: Option<bool>,
-    health_detail: &str,
+/// One job summary row as `JobSummaryView` serializes it.
+fn job_summary(
+    name: &str,
+    interval: &str,
+    last_status: &str,
+    last_utc: &str,
+    last_age: &str,
+    next_utc: &str,
+    overdue: bool,
 ) -> serde_json::Value {
-    data!({
-        "mode": mode,
-        "mode_detail": mode_detail,
-        "provider": provider,
-        "healthy": healthy,
-        "health_detail": health_detail
-    })
-}
-
-/// One `Runtime` row as `RuntimeRowView` serializes it.
-fn runtime_row(label: &str, state: &str, age_label: &str) -> serde_json::Value {
-    let state_css = match state {
-        "live" => "bg-emerald-100 text-emerald-800",
-        "stale" => "bg-red-100 text-red-800",
+    let last_status_css = match last_status {
+        "running" => "bg-sky-100 text-sky-800",
+        "succeeded" => "bg-emerald-100 text-emerald-800",
+        "failed" => "bg-red-100 text-red-800",
         _ => "bg-slate-100 text-slate-700",
     };
-    let seen = state != "missing";
-    data!({
-        "label": label,
-        "stamp_writer": "whoever runs it",
-        "state": state,
-        "state_css": state_css,
-        "age_label": age_label,
-        "seen_utc": if seen { "2026-09-27T23:05:00+00:00" } else { "" },
-        "seen_label": if seen { "2026-09-27 23:05:00 UTC" } else { "" },
-        "origin": if seen { "host-1 · pid 42" } else { "" }
-    })
-}
-
-/// The `jobs` object the jobs page reads: the fixed worker and scheduler halves, with the
-/// queue's actionable flag, its rows, the runtime rows and the stuck warning as the only
-/// variation.
-fn jobs_object(
-    queue: &serde_json::Value,
-    actionable: bool,
-    jobs: &[serde_json::Value],
-    runtime: &[serde_json::Value],
-    stuck: Option<&str>,
-) -> serde_json::Value {
-    data!({
-        "queue": queue,
-        "workers": [{
-            "name": "CaptureWorker",
-            "queue": "default",
-            "tags": "—",
-            "detail": "Takes a still image from the camera and stores it in the file store."
-        }],
-        "scheduled": if actionable {
-            vec![data!({
-                "name": "enqueue_capture",
-                "run": "enqueue_capture",
-                "schedule": "0 * * * * *",
-                "tags": "—"
-            })]
-        } else {
-            vec![]
-        },
-        "jobs": jobs,
-        "actionable": actionable,
-        "stale_minutes": 5,
-        "runtime": runtime,
-        "stuck": stuck
-    })
-}
-
-/// Both `Runtime` rows, with the worker's state as the variation: the scheduler is live
-/// whenever the worker is, since the same tick writes both.
-fn runtime_rows(worker_state: &str) -> Vec<serde_json::Value> {
-    let scheduler = if worker_state == "missing" {
-        "missing"
+    let last_label = if last_utc.is_empty() {
+        ""
     } else {
-        "live"
+        "2026-09-27 23:00:00 UTC"
     };
-    vec![
-        runtime_row(
-            "Scheduler",
-            scheduler,
-            if scheduler == "missing" {
-                "never (expects one every 60 s)"
-            } else {
-                "12.0 s"
-            },
-        ),
-        runtime_row(
-            "Worker",
-            worker_state,
-            if worker_state == "missing" {
-                "never (expects one every 60 s)"
-            } else {
-                "3.0 s"
-            },
-        ),
-    ]
+    let next_label = if next_utc.is_empty() {
+        ""
+    } else {
+        "2026-09-27 23:01:00 UTC"
+    };
+
+    data!({
+        "name": name,
+        "detail": "Takes a still image from the camera and stores it in the file store.",
+        "interval": interval,
+        "last_status": last_status,
+        "last_status_css": last_status_css,
+        "last_utc": last_utc,
+        "last_label": last_label,
+        "last_age": last_age,
+        "next_utc": next_utc,
+        "next_label": next_label,
+        "overdue": overdue
+    })
 }
 
-/// One row as `JobRowView` serializes it: `status` picks the badge and the verbs, and the
-/// timestamps are fixed so the fallback text is predictable.
-fn job_row(
-    id: &str,
-    status: &str,
-    can_cancel: bool,
-    can_retry: bool,
-    elapsed: &str,
-) -> serde_json::Value {
+/// One run row as `RunRowView` serializes it.
+fn run_row(job: &str, status: &str, detail: &str) -> serde_json::Value {
     let status_css = match status {
-        "queued" => "bg-slate-100 text-slate-700",
-        "processing" => "bg-sky-100 text-sky-800",
-        "completed" => "bg-emerald-100 text-emerald-800",
+        "running" => "bg-sky-100 text-sky-800",
+        "succeeded" => "bg-emerald-100 text-emerald-800",
         "failed" => "bg-red-100 text-red-800",
-        _ => "bg-amber-100 text-amber-800",
+        _ => "bg-slate-100 text-slate-700",
     };
+
     data!({
-        "id": id,
-        "id_short": &id[..8],
-        "name": "CaptureWorker",
+        "job": job,
         "status": status,
         "status_css": status_css,
-        "created_utc": "2026-09-27T22:27:00+00:00",
-        "created_label": "2026-09-27 22:27:00 UTC",
-        "elapsed_label": elapsed,
-        "run_at_utc": "2026-09-27T22:27:00+00:00",
-        "tags": if status == "failed" { "camera, nightly" } else { "—" },
-        "can_cancel": can_cancel,
-        "can_retry": can_retry
+        "slot_utc": "2026-09-27T23:00:00+00:00",
+        "slot_label": "2026-09-27 23:00:00 UTC",
+        "started_utc": "2026-09-27T23:00:01+00:00",
+        "started_label": "2026-09-27 23:00:01 UTC",
+        "elapsed_label": "12.0 s",
+        "detail": detail
+    })
+}
+
+/// The `jobs` object the template reads, with the summary, history and pager as the variation.
+fn jobs_object(
+    jobs: &[serde_json::Value],
+    runs: &[serde_json::Value],
+    page: u64,
+    total_pages: u64,
+    total_items: u64,
+    prev_url: Option<&str>,
+    next_url: Option<&str>,
+) -> serde_json::Value {
+    let first_url = if page > 1 { Some("/jobs?page=1") } else { None };
+    let last_url = if page < total_pages {
+        Some(format!("/jobs?page={total_pages}"))
+    } else {
+        None
+    };
+
+    data!({
+        "jobs": jobs,
+        "runs": runs,
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items,
+        "prev_url": prev_url,
+        "next_url": next_url,
+        "first_url": first_url,
+        "last_url": last_url
     })
 }

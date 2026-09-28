@@ -3,5 +3,5 @@
 pub mod prelude;
 
 pub mod app_settings;
-pub mod runtime_heartbeats;
+pub mod job_runs;
 pub mod users;

@@ -4,15 +4,19 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "runtime_heartbeats")]
+#[sea_orm(table_name = "job_runs")]
 pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
     #[sea_orm(primary_key)]
     pub id: i64,
-    pub source: String,
-    pub host: String,
-    pub pid: i64,
+    pub job: String,
+    pub status: String,
+    pub slot_at: DateTimeWithTimeZone,
+    pub started_at: DateTimeWithTimeZone,
+    pub finished_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub detail: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

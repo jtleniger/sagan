@@ -6,7 +6,7 @@ mod m20260926_000002_seed_default_user;
 
 mod m20260927_202919_app_settings;
 
-mod m20260927_231500_runtime_heartbeats;
+mod m20260927_231500_job_runs;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -16,7 +16,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20220101_000001_users::Migration),
             Box::new(m20260926_000002_seed_default_user::Migration),
             Box::new(m20260927_202919_app_settings::Migration),
-            Box::new(m20260927_231500_runtime_heartbeats::Migration),
+            Box::new(m20260927_231500_job_runs::Migration),
             // inject-above (do not remove this comment)
         ]
     }
