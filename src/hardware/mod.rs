@@ -5,7 +5,7 @@
 //! exists) the real drivers, everywhere else the mock in [`mock`]. `Hooks::after_context` builds
 //! it once and puts it in `shared_store`; [`Hardware::of`] is the only reader.
 
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use async_trait::async_trait;
 use loco_rs::{app::AppContext, config::Config, Error, Result};
@@ -61,16 +61,6 @@ pub struct Readings {
     pub taken_at_ms: i64,
 }
 
-/// One JPEG frame, as the Pi's camera stack emits it.
-#[derive(Debug, Clone)]
-pub struct Capture {
-    pub jpeg: Vec<u8>,
-    pub width: u32,
-    pub height: u32,
-    /// Unix milliseconds from the server clock.
-    pub taken_at_ms: i64,
-}
-
 #[async_trait]
 pub trait Fan: Send + Sync {
     /// Set the duty as a whole percent of full speed, `0..=100`; `0` stops the fan.
@@ -98,10 +88,16 @@ pub trait EnvironmentSensor: Send + Sync {
 
 #[async_trait]
 pub trait Camera: Send + Sync {
+    /// Take one still and write it to `dir`/`filename`, creating `dir` if it is missing.
+    ///
+    /// The Pi's camera tools are command-line programs whose only output is a file on disk, so
+    /// the image is never handed back in memory: the caller names the destination, and the
+    /// driver's success is the file's existence.
+    ///
     /// # Errors
     /// [`HardwareError::Unavailable`] when no camera is attached; [`HardwareError::Io`] when the
-    /// capture command runs and fails.
-    async fn capture(&self) -> Result<Capture, HardwareError>;
+    /// capture command runs and fails, or the destination cannot be written.
+    async fn capture(&self, dir: &Path, filename: &str) -> Result<(), HardwareError>;
 }
 
 /// The `settings.hardware` block, deserialized once at boot.
@@ -193,6 +189,16 @@ impl Hardware {
 mod tests {
     use super::*;
 
+    /// A directory under the system temp dir that no other test shares. The mock camera writes
+    /// real files, so each test gets its own.
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("the clock is past the epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("sagan-{tag}-{}-{nanos}", std::process::id()))
+    }
+
     #[tokio::test]
     async fn auto_and_mock_build_driving_bundles() {
         for driver in [Driver::Auto, Driver::Mock] {
@@ -206,12 +212,16 @@ mod tests {
                 .readings()
                 .await
                 .expect("the mock sensor always reads");
-            let frame = hardware
+
+            let dir = scratch("bundle-camera");
+            hardware
                 .camera
-                .capture()
+                .capture(&dir, "frame.jpg")
                 .await
-                .expect("the mock camera always frames");
-            assert_eq!((frame.width, frame.height), (64, 48));
+                .expect("the mock camera always writes");
+            let bytes = std::fs::read(dir.join("frame.jpg")).expect("the frame is on disk");
+            assert!(bytes.starts_with(&[0xFF, 0xD8]));
+            let _ = std::fs::remove_dir_all(&dir);
         }
     }
 

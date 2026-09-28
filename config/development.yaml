@@ -148,8 +148,7 @@ auth:
 settings:
   hardware:
     driver: auto
-  storage:
-    # Where the app's single file store keeps its objects — the capture job's JPEGs.
-    # Relative paths resolve against the process working directory; the driver creates the
-    # directory at boot when it is missing.
+  capture:
+    # Where the capture job writes the camera's JPEGs. Relative paths resolve against the
+    # process working directory; the directory is created when it is missing.
     dir: captures

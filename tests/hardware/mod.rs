@@ -32,13 +32,15 @@ async fn boot_registers_a_bundle_the_pages_can_drive() {
     assert!((35.0..=55.0).contains(&reading.humidity_percent));
     assert!((1008.0..=1018.0).contains(&reading.pressure_hpa));
 
-    // No ribbon on this host, and the mock still frames: the capture path runs here.
-    let frame = hardware
+    // No ribbon on this host, and the mock still writes: the capture path runs here.
+    let dir = std::env::temp_dir().join(format!("sagan-hardware-test-{}", std::process::id()));
+    hardware
         .camera
-        .capture()
+        .capture(&dir, "frame.jpg")
         .await
-        .expect("the mock camera frames");
-    assert_eq!(frame.jpeg.len(), 350);
-    assert_eq!((frame.width, frame.height), (64, 48));
-    assert!(frame.jpeg.starts_with(&[0xFF, 0xD8]));
+        .expect("the mock camera writes");
+    let bytes = std::fs::read(dir.join("frame.jpg")).expect("the frame is on disk");
+    assert_eq!(bytes.len(), 350);
+    assert!(bytes.starts_with(&[0xFF, 0xD8]));
+    let _ = std::fs::remove_dir_all(&dir);
 }

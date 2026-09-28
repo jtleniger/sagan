@@ -93,10 +93,10 @@ sensor's humidity and pressure, refreshed with the rest of the live panel.
 
 ## Captures and periodic jobs
 
-The `capture` job takes one still image from the camera and stores it in the
-app's single file store — the local driver rooted at `settings.storage.dir` in
-`config/<env>.yaml` (`captures/` by default, gitignored; a test run writes
-`target/test-captures` instead).
+The `capture` job takes one still image from the camera and writes it to the
+capture directory — `settings.capture.dir` in `config/<env>.yaml` (`captures/` by
+default, gitignored; a test run writes `target/test-captures` instead). The camera
+driver writes the file itself, the way the Pi's `libcamera-*` command-line tools do.
 
 `capture` runs on the Captures interval saved on the Configuration page. The
 scheduler runs one task, `periodic_work`, once a minute; that task asks each
@@ -144,7 +144,7 @@ that the work *is* the task.
 
 **Runs** is the `job_runs` history, newest slot first, paginated 25 to a page: job,
 status (`running` / `succeeded` / `failed`), the schedule slot, the start time, the
-elapsed time and the detail (the capture's key and size, or the error). That table
+elapsed time and the detail (the capture's filename, or the error). That table
 is also the due rule's state: the newest row per job says when it last ran, and a
 `running` row with a fresh `started_at` is what keeps the next tick off a slow job.
 A failed run has consumed its slot, so it is not retried until the *next* slot.

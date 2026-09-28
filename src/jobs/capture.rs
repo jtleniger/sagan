@@ -1,14 +1,15 @@
-//! `CaptureJob` — takes one still image and puts it in the file store.
+//! `CaptureJob` — takes one still image from the camera and writes it to a file.
 //!
-//! Its cadence is the Captures interval saved on the Configuration page, so the *stored* interval
-//! drives the schedule: a scheduler cron expression is static YAML and cannot.
+//! The destination is `settings.capture.dir`; the camera driver only writes the file, the way the
+//! Pi's `libcamera-*` command-line tools do. Its cadence is the Captures interval saved on the
+//! Configuration page, so the *stored* interval drives the schedule: a scheduler cron expression
+//! is static YAML and cannot.
 
-use std::path::Path;
+use std::path::PathBuf;
 
-use async_trait::async_trait;
-use axum::body::Bytes;
 use chrono::{DateTime, Duration, Local, Utc};
-use loco_rs::{app::AppContext, prelude::*};
+use loco_rs::{app::AppContext, config::Config, prelude::*};
+use serde::Deserialize;
 
 use crate::{
     captures::CaptureSettings,
@@ -17,7 +18,51 @@ use crate::{
     models::app_settings,
 };
 
-/// The capture job: one frame per due slot, stored as `<taken_at_ms>.jpg`.
+/// The directory captures land in when `settings.capture.dir` is absent, and the one
+/// `.gitignore` excludes.
+pub const DEFAULT_DIR: &str = "captures";
+
+/// The `settings.capture` block.
+///
+/// Every field defaults, so an absent `settings:` block (or an absent `capture:` key) writes to
+/// [`DEFAULT_DIR`] rather than failing.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CaptureConfig {
+    /// Where the camera writes its stills. A relative path resolves against the process working
+    /// directory.
+    pub dir: PathBuf,
+}
+
+impl Default for CaptureConfig {
+    fn default() -> Self {
+        Self {
+            dir: DEFAULT_DIR.into(),
+        }
+    }
+}
+
+impl CaptureConfig {
+    /// # Errors
+    /// When the `settings.capture` block exists but does not match this schema — a typo must fail
+    /// the boot, not silently fall back to `captures`.
+    pub fn from_context(config: &Config) -> Result<Self> {
+        /// The `settings:` block, as far as this module reads it.
+        ///
+        /// `Config::settings` deserializes the *whole* block, so the `capture:` key has to be
+        /// named here; `deny_unknown_fields` on [`CaptureConfig`] then rejects a typo inside
+        /// `capture:` rather than defaulting it.
+        #[derive(Debug, Default, Deserialize)]
+        #[serde(default)]
+        struct Settings {
+            capture: CaptureConfig,
+        }
+
+        Ok(config.settings::<Settings>()?.capture)
+    }
+}
+
+/// The capture job: one frame per due slot, written as `<taken_at_ms>.jpg`.
 pub struct CaptureJob;
 
 impl CaptureJob {
@@ -34,7 +79,7 @@ impl PeriodicJob for CaptureJob {
     }
 
     fn detail(&self) -> &'static str {
-        "Takes a still image from the camera and stores it in the file store."
+        "Takes a still image from the camera and writes it to the capture directory."
     }
 
     fn stale_after(&self) -> Duration {
@@ -64,31 +109,25 @@ impl PeriodicJob for CaptureJob {
     }
 
     /// # Errors
-    /// `HardwareError` when this host's camera cannot frame (no camera on a `driver: pi`
-    /// build) — recorded as a failed run rather than a capture that never happened — or a
-    /// `StorageError` when the store refuses the write.
+    /// `HardwareError` when this host's camera cannot frame (no camera on a `driver: pi` build) or
+    /// the destination cannot be written — recorded as a failed run rather than a capture that
+    /// never happened.
     async fn run(&self, ctx: &AppContext) -> Result<String> {
-        let capture = Hardware::of(ctx)?
+        let dir = CaptureConfig::from_context(&ctx.config)?.dir;
+
+        // `<taken_at_ms>.jpg` — the capture instant, sortable, and unique at any interval the
+        // Captures form accepts (1 minute at the fastest); `crate::tasks::hardware_check` writes
+        // `hardware-check-<taken_at_ms>.jpg` for the same reason.
+        let filename = format!("{}.jpg", Utc::now().timestamp_millis());
+
+        Hardware::of(ctx)?
             .camera
-            .capture()
+            .capture(&dir, &filename)
             .await
             .map_err(|err: HardwareError| Error::string(&err.to_string()))?;
 
-        // `<taken_at_ms>.jpg` — the camera's own instant, sortable, and unique at any interval
-        // the Captures form accepts (1 minute at the fastest). Every object in this store is a
-        // capture, so the key needs no prefix; `crate::tasks::hardware_check` writes
-        // `hardware-check-<taken_at_ms>.jpg` for the same reason.
-        let key = format!("{}.jpg", capture.taken_at_ms);
-        let bytes = Bytes::from(capture.jpeg);
-        ctx.storage.upload(Path::new(&key), &bytes).await?;
-
-        tracing::info!(
-            key,
-            bytes = bytes.len(),
-            width = capture.width,
-            height = capture.height,
-            "capture stored"
-        );
-        Ok(format!("{key} ({} bytes)", bytes.len()))
+        let path = dir.join(&filename);
+        tracing::info!(path = %path.display(), "capture written");
+        Ok(filename)
     }
 }
