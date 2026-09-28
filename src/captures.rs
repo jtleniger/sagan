@@ -1,8 +1,10 @@
 //! The Captures section: how often the camera takes a picture.
 //!
 //! The shape of the `captures` row's JSON payload and the rules the page's form enforces.
-//! `crate::models::app_settings` stores it; nothing reads the interval yet.
+//! `crate::models::app_settings` stores it; `crate::jobs::capture` reads the interval to
+//! decide which schedule slot a tick belongs to.
 
+use chrono::{DateTime, Duration, Local, NaiveDate, NaiveDateTime, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 
 /// The `section` value the Captures payload is stored under.
@@ -85,6 +87,104 @@ impl CaptureInterval {
             Self::DailyAt { hour, minute } => format!("Every day at {hour:02}:{minute:02}"),
         }
     }
+
+    /// The most recent schedule slot at or before `now`, on the server's own clock, as UTC.
+    ///
+    /// The interval is whole minutes on the server's clock — the clock the page's
+    /// `Every day at 03:00` is written against. Minutes count from midnight, so an interval
+    /// that does not divide a day (7 minutes, say) restarts at midnight rather than drifting
+    /// across it. `EveryMinutes{n}` therefore lands on `floor(minute_of_day / n) * n`: a tick
+    /// that arrives late still resolves to the slot it was meant for.
+    ///
+    /// `None` when that wall-clock instant does not exist — a slot inside a spring-forward
+    /// gap. The plan accepts the resulting skip rather than adding zone machinery.
+    #[must_use]
+    pub fn latest_slot(&self, now: DateTime<Local>) -> Option<DateTime<Utc>> {
+        to_utc(self.latest_local(now))
+    }
+
+    /// The next schedule slot strictly after `now`, on the server's own clock, as UTC.
+    ///
+    /// Display only — the page's "next due" column. `None` under the same clock edge as
+    /// [`CaptureInterval::latest_slot`].
+    #[must_use]
+    pub fn next_slot(&self, now: DateTime<Local>) -> Option<DateTime<Utc>> {
+        to_utc(self.next_local(now))
+    }
+
+    /// The latest slot as a wall-clock instant, before zone resolution.
+    fn latest_local(self, now: DateTime<Local>) -> NaiveDateTime {
+        let date = now.date_naive();
+        let minute_of_day = now.hour() * 60 + now.minute();
+        match self {
+            Self::EveryMinutes { minutes } => {
+                let minutes = minutes.max(1);
+                at_minute(date, minute_of_day / minutes * minutes)
+            }
+            Self::Hourly => at_minute(date, now.hour() * 60),
+            Self::DailyAt { hour, minute } => {
+                let today = at_minute(date, u32::from(hour) * 60 + u32::from(minute));
+                if now.naive_local() >= today {
+                    today
+                } else {
+                    today - Duration::days(1)
+                }
+            }
+        }
+    }
+
+    /// The next slot as a wall-clock instant, before zone resolution.
+    fn next_local(self, now: DateTime<Local>) -> NaiveDateTime {
+        let date = now.date_naive();
+        let minute_of_day = now.hour() * 60 + now.minute();
+        match self {
+            Self::EveryMinutes { minutes } => {
+                let minutes = minutes.max(1);
+                let next = (minute_of_day / minutes + 1) * minutes;
+                if next >= 1440 {
+                    at_minute(date + Duration::days(1), next - 1440)
+                } else {
+                    at_minute(date, next)
+                }
+            }
+            Self::Hourly => {
+                if now.hour() == 23 {
+                    at_minute(date + Duration::days(1), 0)
+                } else {
+                    at_minute(date, (now.hour() + 1) * 60)
+                }
+            }
+            Self::DailyAt { hour, minute } => {
+                let today = at_minute(date, u32::from(hour) * 60 + u32::from(minute));
+                if now.naive_local() < today {
+                    today
+                } else {
+                    today + Duration::days(1)
+                }
+            }
+        }
+    }
+}
+
+/// `date` at `minute_of_day` minutes past midnight, on the second.
+fn at_minute(date: NaiveDate, minute_of_day: u32) -> NaiveDateTime {
+    let hour = minute_of_day / 60;
+    let minute = minute_of_day % 60;
+    date.and_hms_opt(hour, minute, 0).unwrap_or_else(|| {
+        date.and_hms_opt(0, 0, 0)
+            .expect("midnight is always a valid time")
+    })
+}
+
+/// A wall-clock instant on the server's zone, as UTC.
+///
+/// `None` when the zone has no such instant (a spring-forward gap); an ambiguous instant
+/// (fall-back) resolves to the earlier of the two, which is the one a slot boundary means.
+fn to_utc(local: NaiveDateTime) -> Option<DateTime<Utc>> {
+    Local
+        .from_local_datetime(&local)
+        .earliest()
+        .map(|at| at.with_timezone(&Utc))
 }
 
 /// The Captures section's form, as submitted.
@@ -285,5 +385,114 @@ mod tests {
                 "Enter a time of day as HH:MM."
             );
         }
+    }
+
+    /// A wall-clock instant on the server's own zone.
+    ///
+    /// September has no transition in the zones CI runs in, so construction is unambiguous;
+    /// `.single()` keeps that a fact rather than an assumption.
+    fn local(
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        minute: u32,
+        second: u32,
+    ) -> DateTime<Local> {
+        Local
+            .with_ymd_and_hms(year, month, day, hour, minute, second)
+            .single()
+            .expect("an unambiguous local time")
+    }
+
+    /// The instant a slot on the server's zone stands for, built the way `latest_slot` builds
+    /// it — so the expectation cannot drift from the arithmetic under test.
+    fn utc(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Utc> {
+        local(year, month, day, hour, minute, 0).with_timezone(&Utc)
+    }
+
+    #[test]
+    fn latest_slot_lands_on_the_grid_at_or_before_now() {
+        let now = local(2026, 9, 27, 13, 37, 12);
+        assert_eq!(
+            CaptureInterval::EveryMinutes { minutes: 5 }.latest_slot(now),
+            Some(utc(2026, 9, 27, 13, 35))
+        );
+        // Minutes count from midnight: an interval longer than an hour still lands.
+        assert_eq!(
+            CaptureInterval::EveryMinutes { minutes: 120 }.latest_slot(now),
+            Some(utc(2026, 9, 27, 12, 0))
+        );
+        assert_eq!(
+            CaptureInterval::Hourly.latest_slot(now),
+            Some(utc(2026, 9, 27, 13, 0))
+        );
+    }
+
+    #[test]
+    fn a_daily_slot_is_today_once_the_time_has_passed_and_yesterday_before() {
+        let daily = CaptureInterval::DailyAt {
+            hour: 3,
+            minute: 30,
+        };
+        assert_eq!(
+            daily.latest_slot(local(2026, 9, 27, 9, 0, 0)),
+            Some(utc(2026, 9, 27, 3, 30)),
+            "after the time of day, today's slot is the latest"
+        );
+        assert_eq!(
+            daily.latest_slot(local(2026, 9, 27, 1, 0, 0)),
+            Some(utc(2026, 9, 26, 3, 30)),
+            "before the time of day, yesterday's slot is the latest"
+        );
+        assert_eq!(
+            daily.latest_slot(local(2026, 9, 27, 3, 30, 0)),
+            Some(utc(2026, 9, 27, 3, 30)),
+            "the boundary instant itself belongs to today"
+        );
+    }
+
+    #[test]
+    fn next_slot_is_the_first_boundary_strictly_after_now() {
+        let now = local(2026, 9, 27, 13, 37, 12);
+        assert_eq!(
+            CaptureInterval::EveryMinutes { minutes: 5 }.next_slot(now),
+            Some(utc(2026, 9, 27, 13, 40))
+        );
+        assert_eq!(
+            CaptureInterval::Hourly.next_slot(now),
+            Some(utc(2026, 9, 27, 14, 0))
+        );
+
+        let daily = CaptureInterval::DailyAt {
+            hour: 3,
+            minute: 30,
+        };
+        assert_eq!(
+            daily.next_slot(local(2026, 9, 27, 1, 0, 0)),
+            Some(utc(2026, 9, 27, 3, 30))
+        );
+        assert_eq!(
+            daily.next_slot(local(2026, 9, 27, 9, 0, 0)),
+            Some(utc(2026, 9, 28, 3, 30))
+        );
+    }
+
+    #[test]
+    fn a_boundary_exactly_at_now_is_not_the_next_slot() {
+        assert_eq!(
+            CaptureInterval::EveryMinutes { minutes: 5 }.next_slot(local(2026, 9, 27, 13, 35, 0)),
+            Some(utc(2026, 9, 27, 13, 40))
+        );
+        assert_eq!(
+            CaptureInterval::EveryMinutes { minutes: 5 }.next_slot(local(2026, 9, 27, 23, 59, 30)),
+            Some(utc(2026, 9, 28, 0, 0)),
+            "a slot past midnight rolls the day over"
+        );
+        assert_eq!(
+            CaptureInterval::Hourly.next_slot(local(2026, 9, 27, 23, 10, 0)),
+            Some(utc(2026, 9, 28, 0, 0)),
+            "hour 23 rolls to midnight rather than hour 24"
+        );
     }
 }

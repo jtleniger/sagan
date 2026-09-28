@@ -46,22 +46,9 @@ server:
 
 # Worker Configuration
 workers:
-  # specifies the worker mode. Options:
-  #   - BackgroundQueue - Workers operate asynchronously in the background, processing queued.
-  #   - ForegroundBlocking - Workers operate in the foreground and block until tasks are completed.
-  #   - BackgroundAsync - Workers operate asynchronously in the background, processing tasks with async capabilities.
+  # There is no queue (see `src/tasks/periodic_work.rs`). ForegroundBlocking is the mode that
+  # boots without a queue provider; a test that runs a task runs its job inline.
   mode: ForegroundBlocking
-
-  
-# Queue Configuration
-queue:
-  kind: Sqlite
-  
-  # SQLite connection URI
-  uri: <%= get_env(name="QUEUE_URL", default="sqlite://loco_test.sqlite?mode=rwc") %>
-  # Dangerously flush all data in the queue table on startup. dangerous operation, make sure that you using this flag only on dev environments or test mode
-  dangerously_flush: false
-  
 
 # Mailer Configuration.
 mailer:
@@ -127,3 +114,7 @@ auth:
 settings:
   hardware:
     driver: auto
+  storage:
+    # Mirrors `logger.file_appender.dir` above: a test run must never write into the
+    # repository's own `captures/`, so the store's root is under `target/`.
+    dir: target/test-captures

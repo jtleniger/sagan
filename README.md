@@ -91,6 +91,67 @@ capture; a subsystem this host does not have is reported and exit status stays 0
 The `/system` page's Hardware card shows the fan's commanded duty and the
 sensor's humidity and pressure, refreshed with the rest of the live panel.
 
+## Captures and periodic jobs
+
+The `capture` job takes one still image from the camera and stores it in the
+app's single file store — the local driver rooted at `settings.storage.dir` in
+`config/<env>.yaml` (`captures/` by default, gitignored; a test run writes
+`target/test-captures` instead).
+
+`capture` runs on the Captures interval saved on the Configuration page. The
+scheduler runs one task, `periodic_work`, once a minute; that task asks each
+registered job (`src/jobs/`) whether a slot is due, claims the slot in the
+`job_runs` table, runs the work **inline in its own child process**, and records
+the outcome. The stored interval therefore decides *whether* a slot is due, while
+the YAML cron only decides how often the question is asked.
+
+### Where the work runs
+
+Three pieces, one of them configured:
+
+| Piece | What it is | Chosen by |
+|---|---|---|
+| Scheduler | a clock: at each tick it runs a task as a subprocess | the `scheduler:` block in `config/<env>.yaml` |
+| Task (`periodic_work`) | what a tick calls: it decides what is due and runs it | `src/tasks/periodic_work.rs` |
+| Jobs (`capture`, …) | the work itself, run inline in that child process | `src/jobs::configured()` |
+
+There is **no queue and no worker process**: the scheduler's child does the work,
+and the outcome is a row in `job_runs` in the app database (`database.uri`). That
+is enough here — one device, one camera, work that is periodic rather than
+request-driven — and it removes the second SQLite file, the second pool and the
+"is my worker up?" question. What it costs: in-flight work does not survive a
+restart, and the interval retry is the recovery.
+
+**Run exactly one scheduler process.** Two would double-claim slots; the unique
+`(job, slot_at)` index and the running-guard catch same-tick overlap, but they are
+a safety net, not a design. `workers.mode` is `ForegroundBlocking`, which is also
+why no provider is needed: nothing is ever enqueued.
+
+```sh
+cargo loco start --all                  # one process: server + scheduler
+scripts/dev-split.sh                    # two: web;  and scheduler
+cargo loco start                        # web only — nothing runs the jobs
+cargo loco start --worker --scheduler   # a scheduler, no HTTP server
+```
+
+### The `/jobs` page
+
+Two tables. **Periodic jobs** is one row per registered job: what it does, the
+cadence as configured now, when it last ran (status and age) and when it is next
+due. A highlighted row means the job's newest run is at an older slot than the one
+due now — the dispatcher is behind — which is the whole of "is it running?" now
+that the work *is* the task.
+
+**Runs** is the `job_runs` history, newest slot first, paginated 25 to a page: job,
+status (`running` / `succeeded` / `failed`), the schedule slot, the start time, the
+elapsed time and the detail (the capture's key and size, or the error). That table
+is also the due rule's state: the newest row per job says when it last ran, and a
+`running` row with a fresh `started_at` is what keeps the next tick off a slow job.
+A failed run has consumed its slot, so it is not retried until the *next* slot.
+History is kept for 30 days; the prune that runs at the end of each dispatch always
+keeps the newest row per job, because deleting it would make the job fire on the
+very next tick.
+
 ## Templates
 
 Pages live in `assets/views/` and extend the shell in

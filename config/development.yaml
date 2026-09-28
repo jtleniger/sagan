@@ -51,22 +51,26 @@ server:
 
 # Worker Configuration
 workers:
-  # specifies the worker mode. Options:
-  #   - BackgroundQueue - Workers operate asynchronously in the background, processing queued.
-  #   - ForegroundBlocking - Workers operate in the foreground and block until tasks are completed.
-  #   - BackgroundAsync - Workers operate asynchronously in the background, processing tasks with async capabilities.
-  mode: BackgroundQueue
+  # There is no queue: periodic work runs inline in the scheduled task's child process (see
+  # `src/tasks/periodic_work.rs`). ForegroundBlocking is what boots without a queue provider;
+  # the BackgroundQueue default would try to start one and fail.
+  mode: ForegroundBlocking
 
-  
-# Queue Configuration
-queue:
-  kind: Sqlite
-  
-  # SQLite connection URI
-  uri: <%= get_env(name="QUEUE_URL", default="sqlite://loco_development.sqlite?mode=rwc") %>
-  # Dangerously flush all data in the queue table on startup. dangerous operation, make sure that you using this flag only on dev environments or test mode
-  dangerously_flush: false
-  
+# Recurring work: the scheduler executes `<binary> task <run>` as a subprocess on a
+# six-field cron whose first field is seconds. One entry runs every minute:
+#
+#   periodic_work  for each registered job, claims the due slot in `job_runs` and runs the
+#                  work inline. Capture's cadence is the Captures interval (the
+#                  /configuration page): the stored setting decides, not this cron.
+#
+# Start the scheduler with `cargo loco start --all`, or as its own process:
+# `cargo loco start --worker --scheduler`.
+scheduler:
+  output: silent
+  jobs:
+    periodic_work:
+      run: "periodic_work"
+      schedule: "0 * * * * *"
 
 # Mailer Configuration.
 mailer:
@@ -144,3 +148,8 @@ auth:
 settings:
   hardware:
     driver: auto
+  storage:
+    # Where the app's single file store keeps its objects — the capture job's JPEGs.
+    # Relative paths resolve against the process working directory; the driver creates the
+    # directory at boot when it is missing.
+    dir: captures

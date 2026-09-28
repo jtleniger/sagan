@@ -403,3 +403,272 @@ fn renders_logs_empty_state() {
         "expected the disabled-logger note, got: {rendered}"
     );
 }
+
+#[test]
+fn renders_jobs_page_with_summary_and_history() {
+    let view = engine();
+
+    let rendered = view
+        .render(
+            "jobs/index.html",
+            data!({
+                "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
+                "active": "jobs",
+                "jobs": jobs_object(
+                    &[job_summary(
+                        "capture",
+                        "Every 5 minutes",
+                        "succeeded",
+                        "2026-09-27T23:00:00+00:00",
+                        "12.0 s",
+                        "2026-09-27T23:05:00+00:00",
+                        false
+                    )],
+                    &[run_row("capture", "succeeded", "1790557201099.jpg (350 bytes)")],
+                    1,
+                    2,
+                    26,
+                    None,
+                    Some("/jobs?page=2")
+                )
+            }),
+        )
+        .expect("jobs view should render");
+
+    for expected in [
+        // The sidebar link this page's shell adds.
+        r#"href="/jobs""#,
+        "Periodic jobs",
+        // The one registered job, its cadence and its newest run.
+        "capture",
+        "Every 5 minutes",
+        "Takes a still image from the camera and stores it in the file store.",
+        ">succeeded<",
+        // The timestamp carries the instant for the browser and the UTC text as the fallback.
+        r#"<time datetime="2026-09-27T23:00:00+00:00" data-local-time>"#,
+        "2026-09-27 23:00:00 UTC",
+        "(12.0 s ago)",
+        r#"src="/static/js/local-time.js""#,
+        // The run history: the row's detail, and the pager with more to come.
+        "Runs",
+        "1790557201099.jpg (350 bytes)",
+        "Page 1 of 2",
+        "26 runs",
+        "Next",
+        "/jobs?page=2",
+        // This page overrides `head`, so it has to keep the base's own head — without
+        // `super()` the Tailwind build is dropped and the page renders unstyled.
+        "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "expected {expected:?} in the rendered page, got: {rendered}"
+        );
+    }
+
+    assert!(
+        !rendered.contains("bg-amber-50"),
+        "a job whose newest run is the due slot is not highlighted: {rendered}"
+    );
+    assert!(
+        !rendered.contains("Previous"),
+        "the first page offers no previous link: {rendered}"
+    );
+}
+
+#[test]
+fn renders_jobs_page_with_overdue_job_and_no_runs() {
+    let view = engine();
+
+    // A job that has never run, with a slot due now: the row is highlighted, the status reads
+    // `never`, and the history is the empty state rather than an empty table.
+    let rendered = view
+        .render(
+            "jobs/index.html",
+            data!({
+                "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
+                "active": "jobs",
+                "jobs": jobs_object(
+                    &[job_summary(
+                        "capture",
+                        "Every hour",
+                        "never",
+                        "",
+                        "",
+                        "2026-09-27T23:01:00+00:00",
+                        true
+                    )],
+                    &[],
+                    1,
+                    1,
+                    0,
+                    None,
+                    None
+                )
+            }),
+        )
+        .expect("jobs view should render an overdue job");
+
+    for expected in [
+        "Every hour",
+        ">never<",
+        "No run has been recorded yet.",
+        "2026-09-27 23:01:00 UTC",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "expected {expected:?} in the rendered page, got: {rendered}"
+        );
+    }
+    assert!(
+        rendered.contains("bg-amber-50"),
+        "an overdue job is highlighted: {rendered}"
+    );
+}
+
+#[test]
+fn renders_jobs_page_second_page_with_a_previous_link() {
+    let view = engine();
+
+    let rendered = view
+        .render(
+            "jobs/index.html",
+            data!({
+                "user": {"pid": "p", "name": "Test User", "email": "t@example.com"},
+                "active": "jobs",
+                "jobs": jobs_object(
+                    &[job_summary(
+                        "capture",
+                        "Every hour",
+                        "failed",
+                        "2026-09-27T23:00:00+00:00",
+                        "1m 00s",
+                        "2026-09-28T00:00:00+00:00",
+                        false
+                    )],
+                    &[
+                        run_row("capture", "failed", "hardware is not available on this host"),
+                        run_row("capture", "running", "")
+                    ],
+                    2,
+                    2,
+                    26,
+                    Some("/jobs?page=1"),
+                    None
+                )
+            }),
+        )
+        .expect("jobs view should render the second page");
+
+    for expected in [
+        "Page 2 of 2",
+        "Previous",
+        "First",
+        "/jobs?page=1",
+        // Each status keeps its own badge.
+        "bg-red-100 text-red-800",
+        "bg-sky-100 text-sky-800",
+        ">failed<",
+        ">running<",
+        "hardware is not available on this host",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "expected {expected:?} in the rendered page, got: {rendered}"
+        );
+    }
+}
+
+/// One job summary row as `JobSummaryView` serializes it.
+fn job_summary(
+    name: &str,
+    interval: &str,
+    last_status: &str,
+    last_utc: &str,
+    last_age: &str,
+    next_utc: &str,
+    overdue: bool,
+) -> serde_json::Value {
+    let last_status_css = match last_status {
+        "running" => "bg-sky-100 text-sky-800",
+        "succeeded" => "bg-emerald-100 text-emerald-800",
+        "failed" => "bg-red-100 text-red-800",
+        _ => "bg-slate-100 text-slate-700",
+    };
+    let last_label = if last_utc.is_empty() {
+        ""
+    } else {
+        "2026-09-27 23:00:00 UTC"
+    };
+    let next_label = if next_utc.is_empty() {
+        ""
+    } else {
+        "2026-09-27 23:01:00 UTC"
+    };
+
+    data!({
+        "name": name,
+        "detail": "Takes a still image from the camera and stores it in the file store.",
+        "interval": interval,
+        "last_status": last_status,
+        "last_status_css": last_status_css,
+        "last_utc": last_utc,
+        "last_label": last_label,
+        "last_age": last_age,
+        "next_utc": next_utc,
+        "next_label": next_label,
+        "overdue": overdue
+    })
+}
+
+/// One run row as `RunRowView` serializes it.
+fn run_row(job: &str, status: &str, detail: &str) -> serde_json::Value {
+    let status_css = match status {
+        "running" => "bg-sky-100 text-sky-800",
+        "succeeded" => "bg-emerald-100 text-emerald-800",
+        "failed" => "bg-red-100 text-red-800",
+        _ => "bg-slate-100 text-slate-700",
+    };
+
+    data!({
+        "job": job,
+        "status": status,
+        "status_css": status_css,
+        "slot_utc": "2026-09-27T23:00:00+00:00",
+        "slot_label": "2026-09-27 23:00:00 UTC",
+        "started_utc": "2026-09-27T23:00:01+00:00",
+        "started_label": "2026-09-27 23:00:01 UTC",
+        "elapsed_label": "12.0 s",
+        "detail": detail
+    })
+}
+
+/// The `jobs` object the template reads, with the summary, history and pager as the variation.
+fn jobs_object(
+    jobs: &[serde_json::Value],
+    runs: &[serde_json::Value],
+    page: u64,
+    total_pages: u64,
+    total_items: u64,
+    prev_url: Option<&str>,
+    next_url: Option<&str>,
+) -> serde_json::Value {
+    let first_url = if page > 1 { Some("/jobs?page=1") } else { None };
+    let last_url = if page < total_pages {
+        Some(format!("/jobs?page={total_pages}"))
+    } else {
+        None
+    };
+
+    data!({
+        "jobs": jobs,
+        "runs": runs,
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items,
+        "prev_url": prev_url,
+        "next_url": next_url,
+        "first_url": first_url,
+        "last_url": last_url
+    })
+}

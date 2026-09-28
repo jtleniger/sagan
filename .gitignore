@@ -10,6 +10,11 @@ target/
 # unanchored `logs/` would also match `assets/views/logs/`.
 /logs/
 
+# Capture JPEGs written by the capture worker into `settings.storage.dir`, which
+# defaults to `captures/`. Anchored: an unanchored `captures/` would also match a
+# directory of that name anywhere in the tree.
+/captures/
+
 # include cargo lock
 !Cargo.lock
 

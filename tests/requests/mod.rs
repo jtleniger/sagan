@@ -1,4 +1,5 @@
 mod dashboard;
+mod jobs;
 mod login;
 
 pub mod logs;
