@@ -152,3 +152,7 @@ settings:
     # Where the capture job writes the camera's JPEGs. Relative paths resolve against the
     # process working directory; the directory is created when it is missing.
     dir: captures
+  live:
+    # The front page's Live card: where a poll's capture is written. `/tmp` is scratch — the
+    # directory is pruned to the newest frames and nothing here is backed up.
+    dir: /tmp/sagan/live

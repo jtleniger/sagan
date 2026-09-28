@@ -12,6 +12,7 @@ use loco_rs::{app::AppContext, config::Config, prelude::*};
 use serde::Deserialize;
 
 use crate::{
+    camera_lock::CameraLock,
     captures::CaptureSettings,
     hardware::{Hardware, HardwareError},
     jobs::PeriodicJob,
@@ -119,6 +120,10 @@ impl PeriodicJob for CaptureJob {
         // Captures form accepts (1 minute at the fastest); `crate::tasks::hardware_check` writes
         // `hardware-check-<taken_at_ms>.jpg` for the same reason.
         let filename = format!("{}.jpg", Utc::now().timestamp_millis());
+
+        // The camera is one resource: the live view's on-demand capture takes the same lock
+        // (`crate::camera_lock`).
+        let _lock = CameraLock::acquire().await?;
 
         Hardware::of(ctx)?
             .camera

@@ -118,3 +118,7 @@ settings:
     # Mirrors `logger.file_appender.dir` above: a test run must never write into the
     # repository's own `captures/`, so the capture directory is under `target/`.
     dir: target/test-captures
+  live:
+    # Mirrors the `capture:` override above: a test run must never write into the host's own
+    # `/tmp/sagan/live`, nor race a running dev server for it.
+    dir: target/test-live

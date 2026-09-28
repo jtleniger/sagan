@@ -134,6 +134,26 @@ cargo loco start                        # web only — nothing runs the jobs
 cargo loco start --worker --scheduler   # a scheduler, no HTTP server
 ```
 
+### The Live card
+
+The front page's Live card is a view of the camera: it polls `GET /live` every
+15 s (htmx swaps the fragment in) and shows the newest frame from
+`settings.live.dir` — `/tmp/sagan/live` by default, scratch that is pruned to the
+newest 10 frames, with a test run writing `target/test-live` instead. Each poll
+frames through the same `Camera` trait the `capture` job uses, and reuses a frame
+younger than 10 s rather than capturing again — so two tabs polling at once frame
+once, and the poll interval stays longer than the refresh window. The image
+itself is `GET /live/image`, which serves the newest frame.
+
+The camera is one device, and the capture job runs in the scheduler's **child
+process** (see *Where the work runs*): the serialization is therefore
+cross-process, an `flock` on `/tmp/sagan/camera.lock` (`src/camera_lock.rs`).
+Every camera user takes it — a poll, `capture`, `hardware_check` — so a poll
+arriving while a real capture is framing waits for it. The path is fixed rather
+than configured on purpose: the HTTP server and the scheduler's child are
+separate processes, and a per-environment path could differ between them and
+silently guard nothing.
+
 ### The `/jobs` page
 
 Two tables. **Periodic jobs** is one row per registered job: what it does, the
